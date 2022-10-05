@@ -45,7 +45,7 @@
 #include <ur_msgs/SetIO.h>
 #include "ur_msgs/SetSpeedSliderFraction.h"
 
-#include <ur_rtde_msgs/JointTemperatures.h>
+#include <ur_extra_msgs/JointTemperatures.h>
 
 #include <ur_controllers/speed_scaling_interface.h>
 #include <ur_controllers/scaled_joint_command_interface.h>
@@ -263,7 +263,7 @@ protected:
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_msgs::ToolDataMsg>> tool_data_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_dashboard_msgs::RobotMode>> robot_mode_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_dashboard_msgs::SafetyMode>> safety_mode_pub_;
-  std::unique_ptr<realtime_tools::RealtimePublisher<ur_rtde_msgs::JointTemperatures>> joint_temperatures_pub_;
+  std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::JointTemperatures>> joint_temperatures_pub_;
 
   ros::ServiceServer set_speed_slider_srv_;
   ros::ServiceServer set_io_srv_;

@@ -360,7 +360,7 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
   safety_mode_pub_.reset(
       new realtime_tools::RealtimePublisher<ur_dashboard_msgs::SafetyMode>(robot_hw_nh, "safety_mode", 1, true));
   joint_temperatures_pub_.reset(
-      new realtime_tools::RealtimePublisher<ur_rtde_msgs::JointTemperatures>(robot_hw_nh, "joint_temperatures", 1));
+      new realtime_tools::RealtimePublisher<ur_extra_msgs::JointTemperatures>(robot_hw_nh, "joint_temperatures", 1));
 
   // Set the speed slider fraction used by the robot's execution. Values should be between 0 and 1.
   // Only set this smaller than 1 if you are using the scaled controllers (as by default) or you know what you're

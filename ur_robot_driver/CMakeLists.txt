@@ -27,7 +27,7 @@ find_package(catkin REQUIRED
     ur_controllers
     ur_dashboard_msgs
     ur_msgs
-    ur_rtde_msgs
+    ur_extra_msgs
 )
 find_package(Boost REQUIRED)
 
@@ -53,7 +53,7 @@ catkin_package(
     ur_controllers
     ur_dashboard_msgs
     ur_msgs
-    ur_rtde_msgs
+    ur_extra_msgs
     std_srvs
   DEPENDS
     Boost

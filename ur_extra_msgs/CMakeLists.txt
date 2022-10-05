@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(ur_rtde_msgs)
+project(ur_extra_msgs)
 
 set(MESSAGE_DEPENDENCIES
   std_msgs
