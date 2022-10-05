@@ -45,6 +45,8 @@
 #include <ur_msgs/SetIO.h>
 #include "ur_msgs/SetSpeedSliderFraction.h"
 
+#include <ur_rtde_msgs/JointTemperatures.h>
+
 #include <ur_controllers/speed_scaling_interface.h>
 #include <ur_controllers/scaled_joint_command_interface.h>
 
@@ -180,6 +182,7 @@ protected:
   void publishIOData();
   void publishToolData();
   void publishRobotAndSafetyMode();
+  void publishJointTemperatures(const ros::Time& timestamp);
 
   /*!
    * \brief Read and evaluate data in order to set robot status properties for industrial
@@ -229,6 +232,7 @@ protected:
   vector6d_t joint_positions_;
   vector6d_t joint_velocities_;
   vector6d_t joint_efforts_;
+  vector6d_t joint_temperatures_;
   vector6d_t fts_measurements_;
   vector6d_t tcp_pose_;
   std::bitset<18> actual_dig_out_bits_;
@@ -259,6 +263,7 @@ protected:
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_msgs::ToolDataMsg>> tool_data_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_dashboard_msgs::RobotMode>> robot_mode_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_dashboard_msgs::SafetyMode>> safety_mode_pub_;
+  std::unique_ptr<realtime_tools::RealtimePublisher<ur_rtde_msgs::JointTemperatures>> joint_temperatures_pub_;
 
   ros::ServiceServer set_speed_slider_srv_;
   ros::ServiceServer set_io_srv_;

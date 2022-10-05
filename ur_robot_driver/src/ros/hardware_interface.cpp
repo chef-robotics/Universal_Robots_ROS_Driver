@@ -53,6 +53,7 @@ HardwareInterface::HardwareInterface()
   , joint_positions_{ { 0, 0, 0, 0, 0, 0 } }
   , joint_velocities_{ { 0, 0, 0, 0, 0, 0 } }
   , joint_efforts_{ { 0, 0, 0, 0, 0, 0 } }
+  , joint_temperatures_{ { 0, 0, 0, 0, 0, 0 } }
   , standard_analog_input_{ { 0, 0 } }
   , standard_analog_output_{ { 0, 0 } }
   , joint_names_(6)
@@ -358,6 +359,8 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
       new realtime_tools::RealtimePublisher<ur_dashboard_msgs::RobotMode>(robot_hw_nh, "robot_mode", 1, true));
   safety_mode_pub_.reset(
       new realtime_tools::RealtimePublisher<ur_dashboard_msgs::SafetyMode>(robot_hw_nh, "safety_mode", 1, true));
+  joint_temperatures_pub_.reset(
+      new realtime_tools::RealtimePublisher<ur_rtde_msgs::JointTemperatures>(robot_hw_nh, "joint_temperatures", 1));
 
   // Set the speed slider fraction used by the robot's execution. Values should be between 0 and 1.
   // Only set this smaller than 1 if you are using the scaled controllers (as by default) or you know what you're
@@ -466,6 +469,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readBitsetData<uint64_t>(data_pkg, "actual_digital_output_bits", actual_dig_out_bits_);
     readBitsetData<uint32_t>(data_pkg, "analog_io_types", analog_io_types_);
     readBitsetData<uint32_t>(data_pkg, "tool_analog_input_types", tool_analog_input_types_);
+    readData(data_pkg, "joint_temperatures", joint_temperatures_);
 
     extractRobotStatus();
 
@@ -477,6 +481,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     transformForceTorque();
     publishPose();
     publishRobotAndSafetyMode();
+    publishJointTemperatures(time);
 
     // pausing state follows runtime state when pausing
     if (runtime_state_ == static_cast<uint32_t>(rtde_interface::RUNTIME_STATE::PAUSED))
@@ -709,6 +714,23 @@ void HardwareInterface::publishPose()
       tcp_pose_pub_->msg_.transforms.clear();
       tcp_pose_pub_->msg_.transforms.push_back(tcp_transform_);
       tcp_pose_pub_->unlockAndPublish();
+    }
+  }
+}
+
+void HardwareInterface::publishJointTemperatures(const ros::Time& timestamp)
+{
+  if (joint_temperatures_pub_)
+  {
+    if (joint_temperatures_pub_->trylock())
+    {
+      for (size_t i = 0; i < joint_names_.size(); i++)
+      {
+        joint_temperatures_pub_->msg_.header.stamp = timestamp;
+        joint_temperatures_pub_->msg_.joint_names[i] = joint_names_[i];
+        joint_temperatures_pub_->msg_.temperatures[i] = joint_temperatures_[i];
+      }
+      joint_temperatures_pub_->unlockAndPublish();
     }
   }
 }
