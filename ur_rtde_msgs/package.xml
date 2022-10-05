@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>ur_rtde_msgs</name>
+  <version>0.0.0</version>
+  <description>Messages to encapsulate data UR RTDE packets</description>
+
+  <maintainer email="eng@chefrobotics.ai">Chef Robotics</maintainer>
+  <license>proprietary</license>
+  <url type="website">https://github.com/chef-robotics/Universal_Robots_ROS_Driver</url>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <!-- Core dependencies -->
+  <build_depend>message_generation</build_depend>
+  <exec_depend>message_runtime</exec_depend>
+
+  <!-- Message dependencies should be declared with `depend` -->
+  <depend>std_msgs</depend>
+
+</package>
