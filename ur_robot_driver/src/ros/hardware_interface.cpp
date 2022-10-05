@@ -724,12 +724,16 @@ void HardwareInterface::publishJointTemperatures(const ros::Time& timestamp)
   {
     if (joint_temperatures_pub_->trylock())
     {
+      joint_temperatures_pub_->msg_.header.stamp = timestamp;
+      joint_temperatures_pub_->msg_.joint_names.clear();
+      joint_temperatures_pub_->msg_.temperatures.clear();
+
       for (size_t i = 0; i < joint_names_.size(); i++)
       {
-        joint_temperatures_pub_->msg_.header.stamp = timestamp;
-        joint_temperatures_pub_->msg_.joint_names[i] = joint_names_[i];
-        joint_temperatures_pub_->msg_.temperatures[i] = joint_temperatures_[i];
+        joint_temperatures_pub_->msg_.joint_names.push_back(joint_names_[i]);
+        joint_temperatures_pub_->msg_.temperatures.push_back(joint_temperatures_[i]);
       }
+
       joint_temperatures_pub_->unlockAndPublish();
     }
   }
