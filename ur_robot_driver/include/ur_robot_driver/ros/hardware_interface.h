@@ -164,6 +164,17 @@ public:
    */
   void shouldLogTemperature(bool value);
 
+  struct readStats {
+    std::chrono::duration<double> get_data_elapsed;
+    std::chrono::duration<double> read_data_elapsed;
+    std::chrono::duration<double> pub_io_elapsed;
+    std::chrono::duration<double> pub_tool_elapsed;
+    std::chrono::duration<double> pub_pose_elapsed;
+    std::chrono::duration<double> pub_robot_elapsed;
+    std::chrono::duration<double> pub_temp_elapsed;
+  };
+
+  readStats get_read_stats();
 
 protected:
   /*!
@@ -302,6 +313,8 @@ protected:
   std::string tf_prefix_;
 
   bool enable_temperature_log_;
+
+  readStats read_stats_;
 };
 
 }  // namespace ur_driver

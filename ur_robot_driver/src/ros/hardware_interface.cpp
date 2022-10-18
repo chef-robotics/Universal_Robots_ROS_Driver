@@ -442,10 +442,21 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
   robot_status_resource_.in_motion = TriState::UNKNOWN;
   robot_status_resource_.in_error = TriState::UNKNOWN;
   robot_status_resource_.error_code = 0;
+  read_stats_.get_data_elapsed = std::chrono::duration<double>::zero();
+  read_stats_.read_data_elapsed = std::chrono::duration<double>::zero();
+  read_stats_.pub_io_elapsed = std::chrono::duration<double>::zero();
+  read_stats_.pub_tool_elapsed = std::chrono::duration<double>::zero();
+  read_stats_.pub_pose_elapsed = std::chrono::duration<double>::zero();
+  read_stats_.pub_robot_elapsed = std::chrono::duration<double>::zero();
+  read_stats_.pub_temp_elapsed = std::chrono::duration<double>::zero();
 
+  const std::chrono::steady_clock::time_point get_data_start = std::chrono::steady_clock::now();
   std::unique_ptr<rtde_interface::DataPackage> data_pkg = ur_driver_->getDataPackage();
+  read_stats_.get_data_elapsed = std::chrono::steady_clock::now() - get_data_start;
+  
   if (data_pkg)
   {
+    const std::chrono::steady_clock::time_point read_data_start = std::chrono::steady_clock::now();
     packet_read_ = true;
     readData(data_pkg, "actual_q", joint_positions_);
     readData(data_pkg, "actual_qd", joint_velocities_);
@@ -476,17 +487,28 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readData(data_pkg, "joint_temperatures", joint_temperatures_);
 
     extractRobotStatus();
+    read_stats_.read_data_elapsed = std::chrono::steady_clock::now() - read_data_start;
 
+    const std::chrono::steady_clock::time_point pub_io_start = std::chrono::steady_clock::now();
     publishIOData();
+    read_stats_.pub_io_elapsed = std::chrono::steady_clock::now() - pub_io_start;
+    const std::chrono::steady_clock::time_point pub_tool_start = std::chrono::steady_clock::now();
     publishToolData();
+    read_stats_.pub_tool_elapsed = std::chrono::steady_clock::now() - pub_tool_start;
 
+    const std::chrono::steady_clock::time_point pub_pose_start = std::chrono::steady_clock::now();
     // Transform fts measurements to tool frame
     extractToolPose(time);
     transformForceTorque();
     publishPose();
+    read_stats_.pub_pose_elapsed = std::chrono::steady_clock::now() - pub_pose_start;
+    const std::chrono::steady_clock::time_point pub_robot_start = std::chrono::steady_clock::now();
     publishRobotAndSafetyMode();
+    read_stats_.pub_robot_elapsed = std::chrono::steady_clock::now() - pub_robot_start;
     if (this->enable_temperature_log_) {
+      const std::chrono::steady_clock::time_point pub_temp_start = std::chrono::steady_clock::now();
       publishJointTemperatures(time);
+      read_stats_.pub_temp_elapsed = std::chrono::steady_clock::now() - pub_temp_start;
     }
 
     // pausing state follows runtime state when pausing
@@ -691,6 +713,11 @@ bool HardwareInterface::shouldResetControllers()
   {
     return false;
   }
+}
+
+HardwareInterface::readStats HardwareInterface::get_read_stats()
+{
+  return read_stats_;
 }
 
 void HardwareInterface::extractToolPose(const ros::Time& timestamp)
