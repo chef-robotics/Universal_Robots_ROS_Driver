@@ -428,7 +428,11 @@ void HardwareInterface::readBitsetData(const std::unique_ptr<rtde_interface::Dat
   }
 }
 
-void HardwareInterface::read(const ros::Time& time, const ros::Duration& period, bool trigger_low_frequency_logging)
+void HardwareInterface::shouldLogTemperature(bool value) {
+  this->enable_temperature_log_ = value;
+}
+
+void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
 {
   // set defaults
   robot_status_resource_.mode = RobotMode::UNKNOWN;
@@ -481,7 +485,9 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period,
     transformForceTorque();
     publishPose();
     publishRobotAndSafetyMode();
-    if (trigger_low_frequency_logging) publishJointTemperatures(time);
+    if (this->enable_temperature_log_) {
+      publishJointTemperatures(time);
+    }
 
     // pausing state follows runtime state when pausing
     if (runtime_state_ == static_cast<uint32_t>(rtde_interface::RUNTIME_STATE::PAUSED))
