@@ -157,6 +157,14 @@ public:
    */
   bool shouldResetControllers();
 
+  /*!
+   * \brief Mark next tick as logging tick
+   *
+   * \returns void
+   */
+  void shouldLogTemperature(bool value);
+
+
 protected:
   /*!
    * \brief Transforms force-torque measurements reported from the robot from base to tool frame.
@@ -292,6 +300,8 @@ protected:
 
   std::string robot_ip_;
   std::string tf_prefix_;
+
+  bool enable_temperature_log_;
 };
 
 }  // namespace ur_driver

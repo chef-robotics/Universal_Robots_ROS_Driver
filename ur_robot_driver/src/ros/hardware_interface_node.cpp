@@ -129,9 +129,20 @@ int main(int argc, char** argv)
 
   double expected_cycle_time = 1.0 / (static_cast<double>(g_hw_interface->getControlFrequency()));
 
+  // Debug timing printout every 5 seconds
+  const std::chrono::seconds debug_timing_period{5};
+  std::chrono::steady_clock::time_point debug_timing_start = std::chrono::steady_clock::now();
+
   // Run as fast as possible
   while (ros::ok())
   {
+    const std::chrono::steady_clock::time_point debug_timing_now = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> elapsed_since_debug = debug_timing_now - debug_timing_start;
+    // This is mostly used to track low-frequency information like joint temperature
+    const bool trigger_low_frequency_logging = elapsed_since_debug > debug_timing_period;
+    g_hw_interface->shouldLogTemperature(trigger_low_frequency_logging);
+    if (trigger_low_frequency_logging) debug_timing_start = debug_timing_now;
+
     // Receive current state from robot
     g_hw_interface->read(timestamp, period);
 
