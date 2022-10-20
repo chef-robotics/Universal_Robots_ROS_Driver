@@ -136,29 +136,23 @@ int main(int argc, char** argv)
   // Run as fast as possible
   while (ros::ok())
   {
+    const std::chrono::steady_clock::time_point debug_timing_now = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> total_elapsed = debug_timing_now - debug_timing_start;
+    // This is mostly use to track non-essential information like joint temperature
+    const bool trigger_low_frequency_logging = total_elapsed > debug_timing_period;
+
     // Receive current state from robot
-    g_hw_interface->read(timestamp, period);
+    g_hw_interface->read(timestamp, period, trigger_low_frequency_logging);
 
     // Get current time and elapsed time since last read
     timestamp = ros::Time::now();
     stopwatch_now = std::chrono::steady_clock::now();
-    const std::chrono::duration<double> period_chrono = stopwatch_now - stopwatch_last;
-    period.fromSec(period_chrono.count());
+    period.fromSec(std::chrono::duration_cast<std::chrono::duration<double>>(stopwatch_now - stopwatch_last).count());
     stopwatch_last = stopwatch_now;
 
     cm.update(timestamp, period, g_hw_interface->shouldResetControllers());
 
     g_hw_interface->write(timestamp, period);
-
-
-    // Check if it's time to print
-    const std::chrono::steady_clock::time_point debug_timing_now = std::chrono::steady_clock::now();
-    const std::chrono::duration<double> total_elapsed = debug_timing_now - debug_timing_start;
-    if (total_elapsed > debug_timing_period) {
-
-    }
-
-
     // if (!control_rate.sleep())
     if (period.toSec() > expected_cycle_time)
     {
