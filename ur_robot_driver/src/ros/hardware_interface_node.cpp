@@ -137,9 +137,10 @@ int main(int argc, char** argv)
   while (ros::ok())
   {
     const std::chrono::steady_clock::time_point debug_timing_now = std::chrono::steady_clock::now();
-    const std::chrono::duration<double> total_elapsed = debug_timing_now - debug_timing_start;
+    const std::chrono::duration<double> elapsed_since_debug = debug_timing_now - debug_timing_start;
     // This is mostly use to track non-essential information like joint temperature
-    const bool trigger_low_frequency_logging = total_elapsed > debug_timing_period;
+    const bool trigger_low_frequency_logging = elapsed_since_debug > debug_timing_period;
+    if (trigger_low_frequency_logging) debug_timing_start = debug_timing_now;
 
     // Receive current state from robot
     g_hw_interface->read(timestamp, period, trigger_low_frequency_logging);
