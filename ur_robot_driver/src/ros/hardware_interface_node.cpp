@@ -216,7 +216,6 @@ int main(int argc, char** argv)
     // This is mostly used to track low-frequency information like joint temperature
     const bool trigger_low_frequency_logging = elapsed_since_debug > debug_timing_period;
     g_hw_interface->shouldLogTemperature(trigger_low_frequency_logging);
-    if (trigger_low_frequency_logging) debug_timing_start = debug_timing_now;
 
     // Receive current state from robot
     const std::chrono::steady_clock::time_point read_start = std::chrono::steady_clock::now();
@@ -254,9 +253,8 @@ int main(int argc, char** argv)
     ++debug_loops;
 
     // Check if it's time to print
-    const std::chrono::steady_clock::time_point debug_timing_now = std::chrono::steady_clock::now();
-    const std::chrono::duration<double> total_elapsed = debug_timing_now - debug_timing_start;
-    if (total_elapsed > debug_timing_period) {
+    if (trigger_low_frequency_logging) {
+      const std::chrono::steady_clock::time_point diagnostic_start = std::chrono::steady_clock::now();
       diagnostic_msgs::DiagnosticArray dia_array;
       diagnostic_msgs::DiagnosticStatus robot_status;
       robot_status.name = "ur_hardware_interface: Overall health";
@@ -266,7 +264,7 @@ int main(int argc, char** argv)
 
       diagnostic_msgs::KeyValue loop_durations_last;
       loop_durations_last.key = "Loop durations last (s)";
-      loop_durations_last.value = std::to_string(total_elapsed.count());
+      loop_durations_last.value = std::to_string(elapsed_since_debug.count());
       robot_status.values.push_back(loop_durations_last);
       diagnostic_msgs::KeyValue num_loops;
       num_loops.key = "Number of loops";
@@ -305,9 +303,9 @@ int main(int argc, char** argv)
       reset_msg_stats(pub_robot_stats);
       reset_msg_stats(pub_temp_stats);
       debug_loops = 0;
-      debug_timing_start = debug_timing_now;
-      last_diagnostics_duration = std::chrono::steady_clock::now() - debug_timing_now;
+      last_diagnostics_duration = std::chrono::steady_clock::now() - diagnostic_start;
     }
+    if (trigger_low_frequency_logging) debug_timing_start = debug_timing_now;
 
     // if (!control_rate.sleep())
     // if (period.toSec() > expected_cycle_time)
