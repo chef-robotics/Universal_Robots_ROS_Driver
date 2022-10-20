@@ -129,6 +129,10 @@ int main(int argc, char** argv)
 
   double expected_cycle_time = 1.0 / (static_cast<double>(g_hw_interface->getControlFrequency()));
 
+  // Debug timing printout every 5 seconds
+  const std::chrono::seconds debug_timing_period{5};
+  std::chrono::steady_clock::time_point debug_timing_start = std::chrono::steady_clock::now();
+
   // Run as fast as possible
   while (ros::ok())
   {
@@ -138,12 +142,23 @@ int main(int argc, char** argv)
     // Get current time and elapsed time since last read
     timestamp = ros::Time::now();
     stopwatch_now = std::chrono::steady_clock::now();
-    period.fromSec(std::chrono::duration_cast<std::chrono::duration<double>>(stopwatch_now - stopwatch_last).count());
+    const std::chrono::duration<double> period_chrono = stopwatch_now - stopwatch_last;
+    period.fromSec(period_chrono.count());
     stopwatch_last = stopwatch_now;
 
     cm.update(timestamp, period, g_hw_interface->shouldResetControllers());
 
     g_hw_interface->write(timestamp, period);
+
+
+    // Check if it's time to print
+    const std::chrono::steady_clock::time_point debug_timing_now = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> total_elapsed = debug_timing_now - debug_timing_start;
+    if (total_elapsed > debug_timing_period) {
+
+    }
+
+
     // if (!control_rate.sleep())
     if (period.toSec() > expected_cycle_time)
     {
