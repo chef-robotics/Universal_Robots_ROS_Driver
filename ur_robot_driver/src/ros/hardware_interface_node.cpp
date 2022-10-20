@@ -138,7 +138,7 @@ int main(int argc, char** argv)
   {
     const std::chrono::steady_clock::time_point debug_timing_now = std::chrono::steady_clock::now();
     const std::chrono::duration<double> elapsed_since_debug = debug_timing_now - debug_timing_start;
-    // This is mostly use to track non-essential information like joint temperature
+    // This is mostly used to track low-frequency information like joint temperature
     const bool trigger_low_frequency_logging = elapsed_since_debug > debug_timing_period;
     g_hw_interface->shouldLogTemperature(trigger_low_frequency_logging);
     if (trigger_low_frequency_logging) debug_timing_start = debug_timing_now;
