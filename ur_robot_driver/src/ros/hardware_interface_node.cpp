@@ -27,6 +27,10 @@
 #include <ros/ros.h>
 #include <controller_manager/controller_manager.h>
 
+#include <diagnostic_msgs/DiagnosticArray.h>
+#include <diagnostic_msgs/DiagnosticStatus.h>
+#include <diagnostic_msgs/KeyValue.h>
+
 #include <csignal>
 #include <ur_robot_driver/ros/hardware_interface.h>
 
@@ -43,6 +47,46 @@ void signalHandler(int signum)
   exit(signum);
 }
 
+struct msgStats {
+  std::chrono::duration<double> min_stat;
+  std::chrono::duration<double> max_stat;
+  std::chrono::duration<double> total_stat;
+};
+
+void reset_msg_stats(msgStats &stats)
+{
+  stats.min_stat = std::chrono::duration<double>::zero();
+  stats.max_stat = std::chrono::duration<double>::zero();
+  stats.total_stat = std::chrono::duration<double>::zero();
+}
+
+void update_msg_stats(std::chrono::duration<double> stat_elapsed,
+                      msgStats &stats)
+{
+  if (stats.min_stat == std::chrono::duration<double>::zero() || stat_elapsed < stats.min_stat) stats.min_stat = stat_elapsed;
+  if (stats.max_stat == std::chrono::duration<double>::zero() || stat_elapsed > stats.max_stat) stats.max_stat = stat_elapsed;
+  stats.total_stat += stat_elapsed;
+}
+
+void push_msg_stats(diagnostic_msgs::DiagnosticStatus &stat, 
+                    std::string stat_name, 
+                    msgStats msg_stats,
+                    long num_loops)
+{
+  diagnostic_msgs::KeyValue min_stat_kv;
+  min_stat_kv.key = "min " + stat_name + " (s)";
+  min_stat_kv.value = std::to_string(msg_stats.min_stat.count());
+  stat.values.push_back(min_stat_kv);
+  diagnostic_msgs::KeyValue max_stat_kv;
+  max_stat_kv.key = "max " + stat_name + " (s)";
+  max_stat_kv.value = std::to_string(msg_stats.max_stat.count());
+  stat.values.push_back(max_stat_kv);
+  diagnostic_msgs::KeyValue avg_stat_kv;
+  avg_stat_kv.key = "avg " + stat_name + " (s)";
+  avg_stat_kv.value = std::to_string(msg_stats.total_stat.count() / num_loops);
+  stat.values.push_back(avg_stat_kv);
+}
+
 int main(int argc, char** argv)
 {
   // Set up ROS.
@@ -52,6 +96,8 @@ int main(int argc, char** argv)
 
   ros::NodeHandle nh;
   ros::NodeHandle nh_priv("~");
+
+  ros::Publisher diagnostic_pub = nh.advertise<diagnostic_msgs::DiagnosticArray>("/diagnostics", 1);
 
   // register signal SIGINT and signal handler
   signal(SIGINT, signalHandler);
@@ -129,6 +175,35 @@ int main(int argc, char** argv)
 
   double expected_cycle_time = 1.0 / (static_cast<double>(g_hw_interface->getControlFrequency()));
 
+  msgStats period_stats;
+  reset_msg_stats(period_stats);
+  msgStats read_stats;
+  reset_msg_stats(read_stats);
+  msgStats cm_update_stats;
+  reset_msg_stats(cm_update_stats);
+  msgStats write_stats;
+  reset_msg_stats(write_stats);
+
+  // sub-stats of the read method
+  msgStats get_data_stats;
+  reset_msg_stats(get_data_stats);
+  msgStats read_data_stats;
+  reset_msg_stats(read_data_stats);
+  msgStats pub_io_stats;
+  reset_msg_stats(pub_io_stats);
+  msgStats pub_tool_stats;
+  reset_msg_stats(pub_tool_stats);
+  msgStats pub_pose_stats;
+  reset_msg_stats(pub_pose_stats);
+  msgStats pub_robot_stats;
+  reset_msg_stats(pub_robot_stats);
+  msgStats pub_temp_stats;
+  reset_msg_stats(pub_temp_stats);
+
+  std::chrono::duration<double> last_diagnostics_duration = std::chrono::duration<double>::zero();
+
+  long debug_loops = 0;
+
   // Debug timing printout every 5 seconds
   const std::chrono::seconds debug_timing_period{5};
   std::chrono::steady_clock::time_point debug_timing_start = std::chrono::steady_clock::now();
@@ -141,26 +216,103 @@ int main(int argc, char** argv)
     // This is mostly used to track low-frequency information like joint temperature
     const bool trigger_low_frequency_logging = elapsed_since_debug > debug_timing_period;
     g_hw_interface->shouldLogTemperature(trigger_low_frequency_logging);
-    if (trigger_low_frequency_logging) debug_timing_start = debug_timing_now;
 
     // Receive current state from robot
+    const std::chrono::steady_clock::time_point read_start = std::chrono::steady_clock::now();
     g_hw_interface->read(timestamp, period);
+    const std::chrono::duration<double> read_elapsed = std::chrono::steady_clock::now() - read_start;
+    update_msg_stats(read_elapsed, read_stats);
+    ur_driver::HardwareInterface::readStats read_substats = g_hw_interface->get_read_stats();
+    update_msg_stats(read_substats.get_data_elapsed, get_data_stats);
+    update_msg_stats(read_substats.read_data_elapsed, read_data_stats);
+    update_msg_stats(read_substats.pub_io_elapsed, pub_io_stats);
+    update_msg_stats(read_substats.pub_tool_elapsed, pub_tool_stats);
+    update_msg_stats(read_substats.pub_pose_elapsed, pub_pose_stats);
+    update_msg_stats(read_substats.pub_robot_elapsed, pub_robot_stats);
+    update_msg_stats(read_substats.pub_temp_elapsed, pub_temp_stats);
+
 
     // Get current time and elapsed time since last read
     timestamp = ros::Time::now();
     stopwatch_now = std::chrono::steady_clock::now();
-    period.fromSec(std::chrono::duration_cast<std::chrono::duration<double>>(stopwatch_now - stopwatch_last).count());
+    const std::chrono::duration<double> period_chrono = stopwatch_now - stopwatch_last;
+    update_msg_stats(period_chrono, period_stats);
+    period.fromSec(period_chrono.count());
     stopwatch_last = stopwatch_now;
 
+    const std::chrono::steady_clock::time_point cm_update_start = std::chrono::steady_clock::now();
     cm.update(timestamp, period, g_hw_interface->shouldResetControllers());
+    const std::chrono::duration<double> cm_update_elapsed = std::chrono::steady_clock::now() - cm_update_start;
+    update_msg_stats(cm_update_elapsed, cm_update_stats);
 
+    const std::chrono::steady_clock::time_point write_start = std::chrono::steady_clock::now();
     g_hw_interface->write(timestamp, period);
+    const std::chrono::duration<double> write_elapsed = std::chrono::steady_clock::now() - write_start;
+    update_msg_stats(write_elapsed, write_stats);
+
+    ++debug_loops;
+
+    // Check if it's time to print
+    if (trigger_low_frequency_logging) {
+      const std::chrono::steady_clock::time_point diagnostic_start = std::chrono::steady_clock::now();
+      diagnostic_msgs::DiagnosticArray dia_array;
+      diagnostic_msgs::DiagnosticStatus robot_status;
+      robot_status.name = "ur_hardware_interface: Overall health";
+      robot_status.level = diagnostic_msgs::DiagnosticStatus::OK;
+      robot_status.message = "Looping";
+      robot_status.hardware_id = "none";
+
+      diagnostic_msgs::KeyValue loop_durations_last;
+      loop_durations_last.key = "Loop durations last (s)";
+      loop_durations_last.value = std::to_string(elapsed_since_debug.count());
+      robot_status.values.push_back(loop_durations_last);
+      diagnostic_msgs::KeyValue num_loops;
+      num_loops.key = "Number of loops";
+      num_loops.value = std::to_string(debug_loops);
+      robot_status.values.push_back(num_loops);
+
+      push_msg_stats(robot_status, "period loop", period_stats, debug_loops);
+      push_msg_stats(robot_status, "read", read_stats, debug_loops);
+      push_msg_stats(robot_status, "cm_update", cm_update_stats, debug_loops);
+      push_msg_stats(robot_status, "write", write_stats, debug_loops);
+      push_msg_stats(robot_status, "read: get_data", get_data_stats, debug_loops);
+      push_msg_stats(robot_status, "read: read_data", read_data_stats, debug_loops);
+      push_msg_stats(robot_status, "read: pub_io", pub_io_stats, debug_loops);
+      push_msg_stats(robot_status, "read: pub_tool", pub_tool_stats, debug_loops);
+      push_msg_stats(robot_status, "read: pub_pose", pub_pose_stats, debug_loops);
+      push_msg_stats(robot_status, "read: pub_robot", pub_robot_stats, debug_loops);
+      push_msg_stats(robot_status, "read: pub_temp", pub_temp_stats, debug_loops);
+
+      diagnostic_msgs::KeyValue diagnostic_duration_kv;
+      diagnostic_duration_kv.key = "Last diagnostic duration (s)";
+      diagnostic_duration_kv.value = std::to_string(last_diagnostics_duration.count());
+      robot_status.values.push_back(diagnostic_duration_kv);
+
+      dia_array.status.push_back(robot_status);
+      diagnostic_pub.publish(dia_array);
+
+      reset_msg_stats(period_stats);
+      reset_msg_stats(read_stats);
+      reset_msg_stats(cm_update_stats);
+      reset_msg_stats(write_stats);
+      reset_msg_stats(get_data_stats);
+      reset_msg_stats(read_data_stats);
+      reset_msg_stats(pub_io_stats);
+      reset_msg_stats(pub_tool_stats);
+      reset_msg_stats(pub_pose_stats);
+      reset_msg_stats(pub_robot_stats);
+      reset_msg_stats(pub_temp_stats);
+      debug_loops = 0;
+      last_diagnostics_duration = std::chrono::steady_clock::now() - diagnostic_start;
+    }
+    if (trigger_low_frequency_logging) debug_timing_start = debug_timing_now;
+
     // if (!control_rate.sleep())
-    if (period.toSec() > expected_cycle_time)
-    {
+    // if (period.toSec() > expected_cycle_time)
+    // {
       // ROS_WARN_STREAM("Could not keep cycle rate of " << expected_cycle_time * 1000 << "ms");
       // ROS_WARN_STREAM("Actual cycle time:" << period.toNSec() / 1000000.0 << "ms");
-    }
+    // }
   }
 
   spinner.stop();
