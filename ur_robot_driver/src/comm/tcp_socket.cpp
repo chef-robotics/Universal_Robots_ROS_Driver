@@ -22,6 +22,7 @@
 
 #include <arpa/inet.h>
 #include <endian.h>
+#include <errno.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
 #include <cstring>
@@ -72,23 +73,34 @@ bool TCPSocket::setup(std::string& host, int port)
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-  if (getaddrinfo(host_name, service.c_str(), &hints, &result) != 0)
+  int addr_info_result = getaddrinfo(host_name, service.c_str(), &hints, &result);
+  if (addr_info_result != 0)
   {
-    LOG_ERROR("Failed to get address for %s:%d", host.c_str(), port);
+    LOG_ERROR("Failed to get address for %s:%d; %s", host.c_str(), port, gai_error(addr_info_result));
     return false;
   }
 
   bool connected = false;
-  // loop through the list of addresses untill we find one that's connectable
+  // loop through the list of addresses until we find one that's connectable
   for (struct addrinfo* p = result; p != nullptr; p = p->ai_next)
   {
     socket_fd_ = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 
-    if (socket_fd_ != -1 && open(socket_fd_, p->ai_addr, p->ai_addrlen))
+    if (socket_fd_ == -1)
     {
-      connected = true;
-      break;
+      LOG_ERROR("socket() error: %s", strerror(errno));
+      continue;
     }
+
+    if (open(socket_fd_, p->ai_addr, p->ai_addrlen) == -1)
+    {
+      LOG_ERROR("open() error: %s", strerror(errno));
+      ::close(socket_fd_);
+      continue;
+    }
+
+    connected = true;
+    break;
   }
 
   freeaddrinfo(result);
