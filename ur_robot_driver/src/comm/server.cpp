@@ -22,6 +22,7 @@
 
 #include "ur_robot_driver/comm/server.h"
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
 #include <cstring>
@@ -61,7 +62,12 @@ bool URServer::open(int socket_fd, struct sockaddr* address, size_t address_len)
 {
   int flag = 1;
   setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(int));
-  return ::bind(socket_fd, address, address_len) == 0;
+  if (::bind(socket_fd, address, address_len) == -1)
+  {
+    LOG_ERROR("bind() error: %s", strerror(errno));
+    return false;
+  }
+  return true;
 }
 
 bool URServer::bind()

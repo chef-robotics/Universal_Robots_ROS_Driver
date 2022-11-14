@@ -76,7 +76,7 @@ bool TCPSocket::setup(std::string& host, int port)
   int addr_info_result = getaddrinfo(host_name, service.c_str(), &hints, &result);
   if (addr_info_result != 0)
   {
-    LOG_ERROR("Failed to get address for %s:%d; %s", host.c_str(), port, gai_error(addr_info_result));
+    LOG_ERROR("Failed to get address for %s:%d; %s", host.c_str(), port, gai_strerror(addr_info_result));
     return false;
   }
 
@@ -92,9 +92,9 @@ bool TCPSocket::setup(std::string& host, int port)
       continue;
     }
 
-    if (open(socket_fd_, p->ai_addr, p->ai_addrlen) == -1)
+    if (!open(socket_fd_, p->ai_addr, p->ai_addrlen))
     {
-      LOG_ERROR("open() error: %s", strerror(errno));
+      LOG_WARN("Unable to open socket %s:%d", host.c_str(), port);
       ::close(socket_fd_);
       continue;
     }
