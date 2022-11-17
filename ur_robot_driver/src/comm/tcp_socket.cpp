@@ -73,7 +73,7 @@ bool TCPSocket::setup(std::string& host, int port)
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-  int addr_info_result = getaddrinfo(host_name, service.c_str(), &hints, &result);
+  const int addr_info_result = getaddrinfo(host_name, service.c_str(), &hints, &result);
   if (addr_info_result != 0)
   {
     LOG_ERROR("Failed to get address for %s:%d; %s", host.c_str(), port, gai_strerror(addr_info_result));
@@ -88,7 +88,7 @@ bool TCPSocket::setup(std::string& host, int port)
 
     if (socket_fd_ == -1)
     {
-      LOG_ERROR("socket() error: %s", strerror(errno));
+      LOG_WARN("socket() error: %s", strerror(errno));
       continue;
     }
 
