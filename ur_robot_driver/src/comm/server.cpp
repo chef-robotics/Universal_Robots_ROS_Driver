@@ -64,7 +64,7 @@ bool URServer::open(int socket_fd, struct sockaddr* address, size_t address_len)
   setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(int));
   if (::bind(socket_fd, address, address_len) == -1)
   {
-    LOG_ERROR("bind() error in URServer: %s", strerror(errno));
+    LOG_ERROR("bind() error in URServer %s: %s", toString().c_str(), strerror(errno));
     return false;
   }
   return true;

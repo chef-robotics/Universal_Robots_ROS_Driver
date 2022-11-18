@@ -85,7 +85,7 @@ protected:
   {
     if (::connect(socket_fd, address, address_len) == -1)
     {
-      LOG_ERROR("connect() error in DashboardClient: %s", strerror(errno));
+      LOG_ERROR("connect() error in DashboardClient %s: %s", toString().c_str(), strerror(errno));
       return false;
     }
     return true;

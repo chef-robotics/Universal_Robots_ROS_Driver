@@ -60,9 +60,11 @@ bool TCPSocket::setup(std::string& host, int port)
     return false;
 
   LOG_DEBUG("Setting up connection: %s:%d", host.c_str(), port);
-
   // gethostbyname() is deprecated so use getadderinfo() as described in:
   // http://www.beej.us/guide/bgnet/output/html/multipage/syscalls.html#getaddrinfo
+  // N.B. Need to set these here before any subsequent calls to toString().
+  host_ = host;
+  port_ = port;
 
   const char* host_name = host.empty() ? nullptr : host.c_str();
   std::string service = std::to_string(port);
@@ -76,7 +78,7 @@ bool TCPSocket::setup(std::string& host, int port)
   const int addr_info_result = getaddrinfo(host_name, service.c_str(), &hints, &result);
   if (addr_info_result != 0)
   {
-    LOG_ERROR("Failed to get address for %s:%d; %s", host.c_str(), port, gai_strerror(addr_info_result));
+    LOG_ERROR("Failed to get address for %s: %s", toString().c_str(), gai_strerror(addr_info_result));
     return false;
   }
 
@@ -88,13 +90,13 @@ bool TCPSocket::setup(std::string& host, int port)
 
     if (socket_fd_ == -1)
     {
-      LOG_WARN("socket() error: %s", strerror(errno));
+      LOG_WARN("socket() error for %s: %s", toString().c_str(), strerror(errno));
       continue;
     }
 
     if (!open(socket_fd_, p->ai_addr, p->ai_addrlen))
     {
-      LOG_WARN("Unable to open socket %s:%d", host.c_str(), port);
+      LOG_WARN("Unable to open socket for %s", toString().c_str());
       ::close(socket_fd_);
       continue;
     }
@@ -108,13 +110,13 @@ bool TCPSocket::setup(std::string& host, int port)
   if (!connected)
   {
     state_ = SocketState::Invalid;
-    LOG_ERROR("Connection setup failed for %s:%d", host.c_str(), port);
+    LOG_ERROR("Connection setup failed for %s", toString().c_str());
   }
   else
   {
     setOptions(socket_fd_);
     state_ = SocketState::Connected;
-    LOG_DEBUG("Connection established for %s:%d", host.c_str(), port);
+    LOG_DEBUG("Connection established for %s", toString().c_str());
   }
   return connected;
 }

@@ -42,6 +42,8 @@ enum class SocketState
   Closed         ///< Connection to socket got closed
 };
 
+static const std::string SocketStateStrings[] = { "Invalid", "Connected", "Disconnected", "Closed" };
+
 /*!
  * \brief Class for TCP socket abstraction
  */
@@ -50,6 +52,13 @@ class TCPSocket
 private:
   std::atomic<int> socket_fd_;
   std::atomic<SocketState> state_;
+  std::string host_;
+  int port_;
+
+  std::string getSocketStateString(const SocketState s) const
+  {
+    return SocketStateStrings[static_cast<int>(s)];
+  }
 
 protected:
   virtual bool open(int socket_fd, struct sockaddr* address, size_t address_len)
@@ -61,6 +70,12 @@ protected:
   bool setup(std::string& host, int port);
 
   std::unique_ptr<timeval> recv_timeout_;
+
+  std::string toString() const
+  {
+    return "TCPSocket(host=" + host_ + ", port=" + std::to_string(port_) +
+           ", state=" + getSocketStateString(state_.load()) + ", fd=" + std::to_string(socket_fd_.load()) + ")";
+  }
 
 public:
   /*!
