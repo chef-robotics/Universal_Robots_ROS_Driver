@@ -27,7 +27,10 @@
 #ifndef UR_ROBOT_DRIVER_DASHBOARD_CLIENT_DASHBOARD_CLIENT_H_INCLUDED
 #define UR_ROBOT_DRIVER_DASHBOARD_CLIENT_DASHBOARD_CLIENT_H_INCLUDED
 
+#include <errno.h>
+
 #include <ur_robot_driver/comm/tcp_socket.h>
+#include <ur_robot_driver/log.h>
 
 namespace ur_driver
 {
@@ -80,7 +83,12 @@ public:
 protected:
   virtual bool open(int socket_fd, struct sockaddr* address, size_t address_len)
   {
-    return ::connect(socket_fd, address, address_len) == 0;
+    if (::connect(socket_fd, address, address_len) == -1)
+    {
+      LOG_ERROR("connect() error in DashboardClient %s: %s", toString().c_str(), strerror(errno));
+      return false;
+    }
+    return true;
   }
 
 private:

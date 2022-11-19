@@ -22,6 +22,7 @@
 
 #include <arpa/inet.h>
 #include <endian.h>
+#include <errno.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
 #include <cstring>
@@ -59,9 +60,11 @@ bool TCPSocket::setup(std::string& host, int port)
     return false;
 
   LOG_DEBUG("Setting up connection: %s:%d", host.c_str(), port);
-
   // gethostbyname() is deprecated so use getadderinfo() as described in:
   // http://www.beej.us/guide/bgnet/output/html/multipage/syscalls.html#getaddrinfo
+  // N.B. Need to set these here before any subsequent calls to toString().
+  host_ = host;
+  port_ = port;
 
   const char* host_name = host.empty() ? nullptr : host.c_str();
   std::string service = std::to_string(port);
@@ -72,23 +75,34 @@ bool TCPSocket::setup(std::string& host, int port)
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-  if (getaddrinfo(host_name, service.c_str(), &hints, &result) != 0)
+  const int addr_info_result = getaddrinfo(host_name, service.c_str(), &hints, &result);
+  if (addr_info_result != 0)
   {
-    LOG_ERROR("Failed to get address for %s:%d", host.c_str(), port);
+    LOG_ERROR("Failed to get address for %s: %s", toString().c_str(), gai_strerror(addr_info_result));
     return false;
   }
 
   bool connected = false;
-  // loop through the list of addresses untill we find one that's connectable
+  // loop through the list of addresses until we find one that's connectable
   for (struct addrinfo* p = result; p != nullptr; p = p->ai_next)
   {
     socket_fd_ = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 
-    if (socket_fd_ != -1 && open(socket_fd_, p->ai_addr, p->ai_addrlen))
+    if (socket_fd_ == -1)
     {
-      connected = true;
-      break;
+      LOG_WARN("socket() error for %s: %s", toString().c_str(), strerror(errno));
+      continue;
     }
+
+    if (!open(socket_fd_, p->ai_addr, p->ai_addrlen))
+    {
+      LOG_WARN("Unable to open socket for %s", toString().c_str());
+      ::close(socket_fd_);
+      continue;
+    }
+
+    connected = true;
+    break;
   }
 
   freeaddrinfo(result);
@@ -96,13 +110,13 @@ bool TCPSocket::setup(std::string& host, int port)
   if (!connected)
   {
     state_ = SocketState::Invalid;
-    LOG_ERROR("Connection setup failed for %s:%d", host.c_str(), port);
+    LOG_ERROR("Connection setup failed for %s", toString().c_str());
   }
   else
   {
     setOptions(socket_fd_);
     state_ = SocketState::Connected;
-    LOG_DEBUG("Connection established for %s:%d", host.c_str(), port);
+    LOG_DEBUG("Connection established for %s", toString().c_str());
   }
   return connected;
 }

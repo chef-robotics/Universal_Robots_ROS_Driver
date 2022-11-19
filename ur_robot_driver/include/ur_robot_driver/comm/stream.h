@@ -19,6 +19,7 @@
  */
 
 #pragma once
+#include <errno.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -107,7 +108,12 @@ public:
 protected:
   virtual bool open(int socket_fd, struct sockaddr* address, size_t address_len)
   {
-    return ::connect(socket_fd, address, address_len) == 0;
+    if (::connect(socket_fd, address, address_len) == -1)
+    {
+      LOG_ERROR("connect() error in URStream %s: %s", toString().c_str(), strerror(errno));
+      return false;
+    }
+    return true;
   }
 
 private:
