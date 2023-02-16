@@ -39,6 +39,7 @@
 #include <realtime_tools/realtime_publisher.h>
 #include "tf2_msgs/TFMessage.h"
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <geometry_msgs/AccelStamped.h>
 
 #include <ur_msgs/IOStates.h>
 #include <ur_msgs/ToolDataMsg.h>
@@ -189,6 +190,7 @@ protected:
 
   void publishIOData();
   void publishToolData();
+  void publishToolAccelData(const ros::Time& timestamp);
   void publishRobotAndSafetyMode();
   void publishJointTemperatures(const ros::Time& timestamp);
 
@@ -254,6 +256,7 @@ protected:
   int32_t tool_output_voltage_;
   double tool_output_current_;
   double tool_temperature_;
+  vector3d_t tool_acceleration_;
   tf2::Vector3 tcp_force_;
   tf2::Vector3 tcp_torque_;
   geometry_msgs::TransformStamped tcp_transform_;
@@ -272,6 +275,7 @@ protected:
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_dashboard_msgs::RobotMode>> robot_mode_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_dashboard_msgs::SafetyMode>> safety_mode_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::JointTemperatures>> joint_temperatures_pub_;
+  std::unique_ptr<realtime_tools::RealtimePublisher<geometry_msgs::AccelStamped>> tool_accel_pub_;
 
   ros::ServiceServer set_speed_slider_srv_;
   ros::ServiceServer set_io_srv_;

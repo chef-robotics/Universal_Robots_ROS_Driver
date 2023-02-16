@@ -354,6 +354,8 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
     io_pub_->msg_.analog_out_states[i].pin = i;
   }
   tool_data_pub_.reset(new realtime_tools::RealtimePublisher<ur_msgs::ToolDataMsg>(robot_hw_nh, "tool_data", 1));
+  tool_accel_pub_.reset(
+      new realtime_tools::RealtimePublisher<geometry_msgs::AccelStamped>(robot_hw_nh, "tool_acceleration", 1));
 
   robot_mode_pub_.reset(
       new realtime_tools::RealtimePublisher<ur_dashboard_msgs::RobotMode>(robot_hw_nh, "robot_mode", 1, true));
@@ -464,6 +466,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readData(data_pkg, "tool_output_voltage", tool_output_voltage_);
     readData(data_pkg, "tool_output_current", tool_output_current_);
     readData(data_pkg, "tool_temperature", tool_temperature_);
+    readData(data_pkg, "actual_tool_accelerometer", tool_acceleration_);
     readData(data_pkg, "robot_mode", robot_mode_);
     readData(data_pkg, "safety_mode", safety_mode_);
     readBitsetData<uint32_t>(data_pkg, "robot_status_bits", robot_status_bits_);
@@ -488,6 +491,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     if (this->enable_temperature_log_) {
       publishJointTemperatures(time);
     }
+    publishToolAccelData(time);
 
     // pausing state follows runtime state when pausing
     if (runtime_state_ == static_cast<uint32_t>(rtde_interface::RUNTIME_STATE::PAUSED))
@@ -842,6 +846,21 @@ void HardwareInterface::publishToolData()
       tool_data_pub_->msg_.tool_current = tool_output_current_;
       tool_data_pub_->msg_.tool_temperature = tool_temperature_;
       tool_data_pub_->unlockAndPublish();
+    }
+  }
+}
+
+void HardwareInterface::publishToolAccelData(const ros::Time& timestamp)
+{
+  if (tool_accel_pub_)
+  {
+    if (tool_accel_pub_->trylock())
+    {
+      tool_accel_pub_->msg_.header.stamp = timestamp;
+      tool_accel_pub_->msg_.accel.linear.x = tool_acceleration_[0];
+      tool_accel_pub_->msg_.accel.linear.y = tool_acceleration_[1];
+      tool_accel_pub_->msg_.accel.linear.z = tool_acceleration_[2];
+      tool_accel_pub_->unlockAndPublish();
     }
   }
 }
