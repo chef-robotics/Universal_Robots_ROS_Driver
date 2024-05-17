@@ -181,6 +181,10 @@ int main(int argc, char** argv)
       ROS_WARN_STREAM("Steady period = " << period.toNSec() / 1000.0
                                          << "us. Wall period = " << period_wall.toNSec() / 1000.0 << "us.");
     }
+    else if (period.toSec() > 0.003)
+    {
+      ROS_WARN_STREAM("Actual period = " << period.toNSec() / 1000.0);
+    }
   }
 
   spinner.stop();
