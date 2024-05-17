@@ -107,7 +107,11 @@ int main(int argc, char** argv)
 
   // Set up timers
   ros::Time timestamp;
+  ros::Time timestamp_last;
+  ros::Time timestamp_low_freq;
   ros::Duration period;
+  ros::Duration period_accum;
+  ros::Duration period_wall;
   auto stopwatch_last = std::chrono::steady_clock::now();
   auto stopwatch_now = stopwatch_last;
 
@@ -127,11 +131,12 @@ int main(int argc, char** argv)
   period.fromSec(std::chrono::duration_cast<std::chrono::duration<double>>(stopwatch_now - stopwatch_last).count());
   stopwatch_last = stopwatch_now;
 
-  double expected_cycle_time = 1.0 / (static_cast<double>(g_hw_interface->getControlFrequency()));
+  const double expected_cycle_time = 1.0 / static_cast<double>(g_hw_interface->getControlFrequency());
 
   // Debug timing printout every 5 seconds
-  const std::chrono::seconds debug_timing_period{5};
+  const std::chrono::seconds debug_timing_period{ 5 };
   std::chrono::steady_clock::time_point debug_timing_start = std::chrono::steady_clock::now();
+  timestamp_low_freq = timestamp;
 
   // Run as fast as possible
   while (ros::ok())
@@ -141,7 +146,14 @@ int main(int argc, char** argv)
     // This is mostly used to track low-frequency information like joint temperature
     const bool trigger_low_frequency_logging = elapsed_since_debug > debug_timing_period;
     g_hw_interface->shouldLogTemperature(trigger_low_frequency_logging);
-    if (trigger_low_frequency_logging) debug_timing_start = debug_timing_now;
+    if (trigger_low_frequency_logging)
+    {
+      debug_timing_start = debug_timing_now;
+      ROS_INFO_STREAM("Accumulated period = " << period_accum.toNSec() / 1000.0 << "us. Wall time diff = "
+                                              << (timestamp_last - timestamp_low_freq).toNSec() / 1000.0);
+      period_accum = ros::Duration(0);
+      timestamp_low_freq = timestamp_last;
+    }
 
     // Receive current state from robot
     g_hw_interface->read(timestamp, period);
@@ -150,7 +162,10 @@ int main(int argc, char** argv)
     timestamp = ros::Time::now();
     stopwatch_now = std::chrono::steady_clock::now();
     period.fromSec(std::chrono::duration_cast<std::chrono::duration<double>>(stopwatch_now - stopwatch_last).count());
+    period_wall = timestamp - timestamp_last;
+    period_accum += period;
     stopwatch_last = stopwatch_now;
+    timestamp_last = timestamp;
 
     cm.update(timestamp, period, g_hw_interface->shouldResetControllers());
 
@@ -160,6 +175,11 @@ int main(int argc, char** argv)
     {
       // ROS_WARN_STREAM("Could not keep cycle rate of " << expected_cycle_time * 1000 << "ms");
       // ROS_WARN_STREAM("Actual cycle time:" << period.toNSec() / 1000000.0 << "ms");
+    }
+    if (std::abs((period - period_wall).toSec()) > 0.001)
+    {
+      ROS_WARN_STREAM("Stead period = " << period.toNSec() / 1000.0
+                                        << "us. Wall period = " << period_wall.toNSec() / 1000.0 << "us.");
     }
   }
 
