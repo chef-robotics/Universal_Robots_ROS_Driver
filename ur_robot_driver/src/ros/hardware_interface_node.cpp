@@ -176,10 +176,10 @@ int main(int argc, char** argv)
       // ROS_WARN_STREAM("Could not keep cycle rate of " << expected_cycle_time * 1000 << "ms");
       // ROS_WARN_STREAM("Actual cycle time:" << period.toNSec() / 1000000.0 << "ms");
     }
-    if (std::abs((period - period_wall).toSec()) > 0.001)
+    if (std::abs((period - period_wall).toSec()) > 0.0005)
     {
-      ROS_WARN_STREAM("Stead period = " << period.toNSec() / 1000.0
-                                        << "us. Wall period = " << period_wall.toNSec() / 1000.0 << "us.");
+      ROS_WARN_STREAM("Steady period = " << period.toNSec() / 1000.0
+                                         << "us. Wall period = " << period_wall.toNSec() / 1000.0 << "us.");
     }
   }
 

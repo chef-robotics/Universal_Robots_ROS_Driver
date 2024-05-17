@@ -48,6 +48,12 @@ public:
     this->curr_trajectory_box_.get(curr_traj_ptr);
     typename Base::Trajectory& curr_traj = *curr_traj_ptr;
 
+    const auto wall_period = time - this->time_data_.readFromRT()->time;
+    if (std::abs((wall_period - period).toSec()) > 0.0005)
+    {
+      ROS_WARN_STREAM("[INNER] Steady period = " << period.toNSec() / 1000.0
+                                                 << "us. Wall period = " << wall_period.toNSec() / 1000.0 << "us.");
+    }
     // Update time data
     typename Base::TimeData time_data;
     time_data.time = time;                                                        // Cache current time
