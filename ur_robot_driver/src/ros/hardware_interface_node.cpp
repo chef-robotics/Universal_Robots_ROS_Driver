@@ -134,7 +134,7 @@ int main(int argc, char** argv)
   const double expected_cycle_time = 1.0 / static_cast<double>(g_hw_interface->getControlFrequency());
 
   // Debug timing printout every 5 seconds
-  const std::chrono::seconds debug_timing_period{ 5 };
+  const std::chrono::seconds debug_timing_period{ 1 };
   std::chrono::steady_clock::time_point debug_timing_start = std::chrono::steady_clock::now();
   timestamp_low_freq = timestamp;
 
@@ -148,7 +148,7 @@ int main(int argc, char** argv)
     g_hw_interface->shouldLogTemperature(trigger_low_frequency_logging);
     if (trigger_low_frequency_logging)
     {
-      debug_timing_start = debug_timing_now;
+      debug_timing_start += debug_timing_period;
       ROS_INFO_STREAM("Accumulated period = " << period_accum.toNSec() / 1000.0 << "us. Wall time diff = "
                                               << (timestamp_last - timestamp_low_freq).toNSec() / 1000.0);
       period_accum = ros::Duration(0);
