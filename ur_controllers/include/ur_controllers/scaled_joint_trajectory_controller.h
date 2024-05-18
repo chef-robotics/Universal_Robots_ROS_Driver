@@ -54,6 +54,10 @@ public:
       ROS_WARN_STREAM("[INNER] Steady period = " << period.toNSec() / 1000.0
                                                  << "us. Wall period = " << wall_period.toNSec() / 1000.0 << "us.");
     }
+    if (scaling_factor_ != 1.0)
+    {
+      ROS_WARN_STREAM("Non-1 scaling factor: " << scaling_factor_);
+    }
     // Update time data
     typename Base::TimeData time_data;
     time_data.time = time;                                                        // Cache current time
@@ -61,6 +65,13 @@ public:
     time_data.uptime = this->time_data_.readFromRT()->uptime + time_data.period;  // Update controller uptime
     ros::Time traj_time = this->time_data_.readFromRT()->uptime + period;
     this->time_data_.writeFromNonRT(time_data);  // TODO: Grrr, we need a lock-free data structure here!
+    if (time - last_log_ >= ros::Duration(1.0))
+    {
+      ROS_INFO_STREAM("Uptime diff = " << (traj_time - last_log_traj_time_).toNSec() / 1000.0
+                                       << "us. Time diff = " << (time - last_log_).toNSec() / 1000.0 << "us.");
+      last_log_ = time;
+      last_log_traj_time_ = traj_time;
+    }
 
     // NOTE: It is very important to execute the two above code blocks in the specified sequence: first get current
     // trajectory, then update time data. Hopefully the following paragraph sheds a bit of light on the rationale.
@@ -204,6 +215,8 @@ public:
 protected:
   using Base = joint_trajectory_controller::JointTrajectoryController<SegmentImpl, HardwareInterface>;
   double scaling_factor_;
+  ros::Time last_log_{ 0 };
+  ros::Time last_log_traj_time_{ 0 };
 
 private:
   /* data */
