@@ -478,6 +478,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readBitsetData<uint32_t>(data_pkg, "tool_analog_input_types", tool_analog_input_types_);
     readData(data_pkg, "joint_temperatures", joint_temperatures_);
     readData(data_pkg, "joint_position_deviation_ratio", joint_position_deviation_ratio_);
+    readData(data_pkg, "collision_detection_ratio", collision_detection_ratio_);
 
     extractRobotStatus();
 
@@ -757,11 +758,8 @@ void HardwareInterface::publishProtectiveStopRatios(const ros::Time& timestamp)
     if (pstop_ratios_pub_->trylock())
     {
       pstop_ratios_pub_->msg_.header.stamp = timestamp;
-      /* N.B. We set `collision_detection_ratio` to "unknown" since we haven't yet implemented the logic to know if this
-       * value is available over RTDE (only available when running Polyscope >= 5.15.0).
-       */
       // TODO(cj): Add logic to check the Polyscope version running and publish collision_detection_ratio if possible.
-      pstop_ratios_pub_->msg_.collision_detection_ratio = ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO;
+      pstop_ratios_pub_->msg_.collision_detection_ratio = collision_detection_ratio_;
       pstop_ratios_pub_->msg_.joint_position_deviation_ratio = joint_position_deviation_ratio_;
       pstop_ratios_pub_->unlockAndPublish();
     }
