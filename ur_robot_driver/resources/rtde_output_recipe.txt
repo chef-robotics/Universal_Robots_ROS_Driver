@@ -26,3 +26,4 @@ robot_status_bits
 safety_status_bits
 actual_current
 joint_temperatures
+joint_position_deviation_ratio

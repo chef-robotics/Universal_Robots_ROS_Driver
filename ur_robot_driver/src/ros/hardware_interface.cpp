@@ -361,6 +361,9 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
       new realtime_tools::RealtimePublisher<ur_dashboard_msgs::SafetyMode>(robot_hw_nh, "safety_mode", 1, true));
   joint_temperatures_pub_.reset(
       new realtime_tools::RealtimePublisher<ur_extra_msgs::JointTemperatures>(robot_hw_nh, "joint_temperatures", 1));
+  pstop_ratios_pub_.reset(
+      new realtime_tools::RealtimePublisher<ur_extra_msgs::ProtectiveStopRatios>(robot_hw_nh, "protective_stop_ratios",
+                                                                                 1));
 
   // Set the speed slider fraction used by the robot's execution. Values should be between 0 and 1.
   // Only set this smaller than 1 if you are using the scaled controllers (as by default) or you know what you're
@@ -474,6 +477,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readBitsetData<uint32_t>(data_pkg, "analog_io_types", analog_io_types_);
     readBitsetData<uint32_t>(data_pkg, "tool_analog_input_types", tool_analog_input_types_);
     readData(data_pkg, "joint_temperatures", joint_temperatures_);
+    readData(data_pkg, "joint_position_deviation_ratio", joint_position_deviation_ratio_);
 
     extractRobotStatus();
 
@@ -485,6 +489,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     transformForceTorque();
     publishPose();
     publishRobotAndSafetyMode();
+    publishProtectiveStopRatios(time);
     if (this->enable_temperature_log_) {
       publishJointTemperatures(time);
     }
@@ -744,6 +749,25 @@ void HardwareInterface::publishJointTemperatures(const ros::Time& timestamp)
     }
   }
 }
+
+void HardwareInterface::publishProtectiveStopRatios(const ros::Time& timestamp)
+{
+  if (pstop_ratios_pub_)
+  {
+    if (pstop_ratios_pub_->trylock())
+    {
+      pstop_ratios_pub_->msg_.header.stamp = timestamp;
+      /* N.B. We set `collision_detection_ratio` to "unknown" since we haven't yet implemented the logic to know if this
+       * value is available over RTDE (only available when running Polyscope >= 5.15.0).
+       */
+      // TODO(cj): Add logic to check the Polyscope version running and publish collision_detection_ratio if possible.
+      pstop_ratios_pub_->msg_.collision_detection_ratio = ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO;
+      pstop_ratios_pub_->msg_.joint_position_deviation_ratio = joint_position_deviation_ratio_;
+      pstop_ratios_pub_->unlockAndPublish();
+    }
+  }
+}
+
 
 void HardwareInterface::extractRobotStatus()
 {
