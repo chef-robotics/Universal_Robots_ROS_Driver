@@ -758,7 +758,6 @@ void HardwareInterface::publishProtectiveStopRatios(const ros::Time& timestamp)
     if (pstop_ratios_pub_->trylock())
     {
       pstop_ratios_pub_->msg_.header.stamp = timestamp;
-      // TODO(cj): Add logic to check the Polyscope version running and publish collision_detection_ratio if possible.
       pstop_ratios_pub_->msg_.collision_detection_ratio = collision_detection_ratio_;
       pstop_ratios_pub_->msg_.joint_position_deviation_ratio = joint_position_deviation_ratio_;
       pstop_ratios_pub_->unlockAndPublish();
