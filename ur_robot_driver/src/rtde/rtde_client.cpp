@@ -333,7 +333,19 @@ std::vector<std::string> RTDEClient::readRecipe(const std::string& recipe_file)
   std::string line;
   while (std::getline(file, line))
   {
-    recipe.push_back(line);
+    // Handle comments (denoted by a hashtag '#')
+    std::size_t pos = line.find('#');
+    if (pos != std::string::npos)
+    {
+      // Truncate the line at the position of the first hashtag
+      line = line.substr(0, pos);
+    }
+    // Trim any leading or trailing whitespace
+    line.erase(line.find_last_not_of(" \n\r\t") + 1);
+    if (!line.empty()) // Only add non-empty lines
+    {
+      recipe.push_back(line);
+    }
   }
   return recipe;
 }
