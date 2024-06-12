@@ -409,13 +409,20 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
 
 template <typename T>
 void HardwareInterface::readData(const std::unique_ptr<rtde_interface::DataPackage>& data_pkg,
-                                 const std::string& var_name, T& data)
+                                 const std::string& var_name, T& data, bool throw_on_error, const T& default_value)
 {
   if (!data_pkg->getData(var_name, data))
   {
-    // This throwing should never happen unless misconfigured
-    std::string error_msg = "Did not find '" + var_name + "' in data sent from robot. This should not happen!";
-    throw std::runtime_error(error_msg);
+    if (throw_on_error)
+    {
+      // This throwing should never happen unless misconfigured
+      std::string error_msg = "Did not find '" + var_name + "' in data sent from robot. This should not happen!";
+      throw std::runtime_error(error_msg);
+    }
+    else
+    {
+      data = default_value;
+    }
   }
 }
 
@@ -477,8 +484,10 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readBitsetData<uint32_t>(data_pkg, "analog_io_types", analog_io_types_);
     readBitsetData<uint32_t>(data_pkg, "tool_analog_input_types", tool_analog_input_types_);
     readData(data_pkg, "joint_temperatures", joint_temperatures_);
-    readData(data_pkg, "joint_position_deviation_ratio", joint_position_deviation_ratio_);
-    readData(data_pkg, "collision_detection_ratio", collision_detection_ratio_);
+    readData(data_pkg, "joint_position_deviation_ratio", joint_position_deviation_ratio_, false,
+             ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO);
+    readData(data_pkg, "collision_detection_ratio", collision_detection_ratio_, false,
+             ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO);
 
     extractRobotStatus();
 

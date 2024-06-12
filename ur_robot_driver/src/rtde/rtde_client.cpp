@@ -65,6 +65,10 @@ bool RTDEClient::init()
   LOG_INFO("Negotiated RTDE protocol version to %hu.", protocol_version);
   parser_.setProtocolVersion(protocol_version);
 
+  /* TODO(cj): It would be great to adjust the input and output recipes according to the Polyscope version,
+   *   but they have already been loaded in the constructor and would be a pain to modify post-facto.
+   *   Should consider delaying loading of the recipe until the Polyscope version can be checked for compatibility.
+   */
   queryURControlVersion();
   if (urcontrol_version_.major < 5)
   {

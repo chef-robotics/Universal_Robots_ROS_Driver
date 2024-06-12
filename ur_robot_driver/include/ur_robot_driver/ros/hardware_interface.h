@@ -203,7 +203,8 @@ protected:
   bool stopControl(std_srvs::TriggerRequest& req, std_srvs::TriggerResponse& res);
 
   template <typename T>
-  void readData(const std::unique_ptr<rtde_interface::DataPackage>& data_pkg, const std::string& var_name, T& data);
+  void readData(const std::unique_ptr<rtde_interface::DataPackage>& data_pkg, const std::string& var_name, T& data,
+                bool throw_on_error = true, const T& default_value = T{});
   template <typename T, size_t N>
   void readBitsetData(const std::unique_ptr<rtde_interface::DataPackage>& data_pkg, const std::string& var_name,
                       std::bitset<N>& data);
