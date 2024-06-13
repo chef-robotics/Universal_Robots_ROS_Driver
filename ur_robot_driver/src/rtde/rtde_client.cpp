@@ -65,6 +65,10 @@ bool RTDEClient::init()
   LOG_INFO("Negotiated RTDE protocol version to %hu.", protocol_version);
   parser_.setProtocolVersion(protocol_version);
 
+  /* TODO(cj): It would be great to adjust the input and output recipes according to the Polyscope version,
+   *   but they have already been loaded in the constructor and would be a pain to modify post-facto.
+   *   Should consider delaying loading of the recipe until the Polyscope version can be checked for compatibility.
+   */
   queryURControlVersion();
   if (urcontrol_version_.major < 5)
   {
@@ -333,7 +337,19 @@ std::vector<std::string> RTDEClient::readRecipe(const std::string& recipe_file)
   std::string line;
   while (std::getline(file, line))
   {
-    recipe.push_back(line);
+    // Handle comments (denoted by a hashtag '#')
+    std::size_t pos = line.find('#');
+    if (pos != std::string::npos)
+    {
+      // Truncate the line at the position of the first hashtag
+      line = line.substr(0, pos);
+    }
+    // Trim any leading or trailing whitespace
+    line.erase(line.find_last_not_of(" \n\r\t") + 1);
+    if (!line.empty()) // Only add non-empty lines
+    {
+      recipe.push_back(line);
+    }
   }
   return recipe;
 }

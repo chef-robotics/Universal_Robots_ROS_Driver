@@ -68,6 +68,8 @@ std::unordered_map<std::string, DataPackage::_rtde_type_variant> DataPackage::g_
   { "elbow_velocity", vector3d_t() },
   { "robot_status_bits", uint32_t() },
   { "safety_status_bits", uint32_t() },
+  { "joint_position_deviation_ratio", double() },
+  { "collision_detection_ratio", double() },
   { "analog_io_types", uint32_t() },
   { "standard_analog_input0", double() },
   { "standard_analog_input1", double() },

@@ -361,6 +361,9 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
       new realtime_tools::RealtimePublisher<ur_dashboard_msgs::SafetyMode>(robot_hw_nh, "safety_mode", 1, true));
   joint_temperatures_pub_.reset(
       new realtime_tools::RealtimePublisher<ur_extra_msgs::JointTemperatures>(robot_hw_nh, "joint_temperatures", 1));
+  pstop_ratios_pub_.reset(
+      new realtime_tools::RealtimePublisher<ur_extra_msgs::ProtectiveStopRatios>(robot_hw_nh, "protective_stop_ratios",
+                                                                                 1));
 
   // Set the speed slider fraction used by the robot's execution. Values should be between 0 and 1.
   // Only set this smaller than 1 if you are using the scaled controllers (as by default) or you know what you're
@@ -406,13 +409,20 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
 
 template <typename T>
 void HardwareInterface::readData(const std::unique_ptr<rtde_interface::DataPackage>& data_pkg,
-                                 const std::string& var_name, T& data)
+                                 const std::string& var_name, T& data, bool throw_on_error, const T& default_value)
 {
   if (!data_pkg->getData(var_name, data))
   {
-    // This throwing should never happen unless misconfigured
-    std::string error_msg = "Did not find '" + var_name + "' in data sent from robot. This should not happen!";
-    throw std::runtime_error(error_msg);
+    if (throw_on_error)
+    {
+      // This throwing should never happen unless misconfigured
+      std::string error_msg = "Did not find '" + var_name + "' in data sent from robot. This should not happen!";
+      throw std::runtime_error(error_msg);
+    }
+    else
+    {
+      data = default_value;
+    }
   }
 }
 
@@ -474,6 +484,10 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readBitsetData<uint32_t>(data_pkg, "analog_io_types", analog_io_types_);
     readBitsetData<uint32_t>(data_pkg, "tool_analog_input_types", tool_analog_input_types_);
     readData(data_pkg, "joint_temperatures", joint_temperatures_);
+    readData(data_pkg, "joint_position_deviation_ratio", joint_position_deviation_ratio_, false,
+             ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO);
+    readData(data_pkg, "collision_detection_ratio", collision_detection_ratio_, false,
+             ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO);
 
     extractRobotStatus();
 
@@ -485,6 +499,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     transformForceTorque();
     publishPose();
     publishRobotAndSafetyMode();
+    publishProtectiveStopRatios(time);
     if (this->enable_temperature_log_) {
       publishJointTemperatures(time);
     }
@@ -744,6 +759,21 @@ void HardwareInterface::publishJointTemperatures(const ros::Time& timestamp)
     }
   }
 }
+
+void HardwareInterface::publishProtectiveStopRatios(const ros::Time& timestamp)
+{
+  if (pstop_ratios_pub_)
+  {
+    if (pstop_ratios_pub_->trylock())
+    {
+      pstop_ratios_pub_->msg_.header.stamp = timestamp;
+      pstop_ratios_pub_->msg_.collision_detection_ratio = collision_detection_ratio_;
+      pstop_ratios_pub_->msg_.joint_position_deviation_ratio = joint_position_deviation_ratio_;
+      pstop_ratios_pub_->unlockAndPublish();
+    }
+  }
+}
+
 
 void HardwareInterface::extractRobotStatus()
 {

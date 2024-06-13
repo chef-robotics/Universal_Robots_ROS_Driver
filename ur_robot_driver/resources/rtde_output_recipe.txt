@@ -1,3 +1,6 @@
+# NB: Unless otherwise noted, all variables are available in Polyscope >= 5.0.0
+# The driver does NOT resolve incompatibilities between recipe variables and
+# Polyscope version; it will just error out (see `RTDEClient::setupOutputs()`).
 timestamp
 actual_q
 actual_qd
@@ -26,3 +29,7 @@ robot_status_bits
 safety_status_bits
 actual_current
 joint_temperatures
+joint_position_deviation_ratio
+# Introduced in Polyscope 5.15.0
+# Commented out since the Polyscope version being used is unknown
+# collision_detection_ratio
