@@ -41,6 +41,7 @@ std::unordered_map<std::string, DataPackage::_rtde_type_variant> DataPackage::g_
   { "actual_qd", vector6d_t() },
   { "actual_qdd", vector6d_t() },
   { "actual_current", vector6d_t() },
+  { "actual_current_window", vector6d_t() },
   { "actual_moment", vector6d_t() },
   { "joint_control_output", vector6d_t() },
   { "actual_TCP_pose", vector6d_t() },

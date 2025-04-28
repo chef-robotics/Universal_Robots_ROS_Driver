@@ -14,3 +14,7 @@ float64 collision_detection_ratio
 # How close the robot is to triggering a C153 or C159 "joint position deviation" protective stop.
 # No documentation on when this was introduced; assuming it has always been there.
 float64 joint_position_deviation_ratio
+
+# RTDE `time_scale_source`
+# Introduced in Polyscope 5.17.0
+int32 time_scale_source
