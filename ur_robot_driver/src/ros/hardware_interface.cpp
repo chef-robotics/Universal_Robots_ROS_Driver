@@ -470,20 +470,20 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
   if (data_pkg)
   {
     packet_read_ = true;
-    readData(data_pkg, "target_q", target_joint_positions_);
-    readData(data_pkg, "target_qd", target_joint_velocities_);
-    readData(data_pkg, "target_qdd", target_joint_accelerations_);
-    readData(data_pkg, "target_current", target_joint_efforts_);
-    readData(data_pkg, "target_moment", target_joint_moments_);
+    readData(data_pkg, "target_q", target_joint_positions_, false);
+    readData(data_pkg, "target_qd", target_joint_velocities_, false);
+    readData(data_pkg, "target_qdd", target_joint_accelerations_, false);
+    readData(data_pkg, "target_current", target_joint_efforts_, false);
+    readData(data_pkg, "target_moment", target_joint_moments_, false);
     readData(data_pkg, "actual_q", joint_positions_);
     readData(data_pkg, "actual_qd", joint_velocities_);
-    readData(data_pkg, "actual_qdd", joint_accelerations_);
+    readData(data_pkg, "actual_qdd", joint_accelerations_, false);
     readData(data_pkg, "actual_current", joint_efforts_);
-    readData(data_pkg, "actual_current_window", joint_current_windows_);
-    readData(data_pkg, "actual_moment", joint_moments_);
-    readData(data_pkg, "joint_control_output", joint_control_outputs_);
+    readData(data_pkg, "actual_current_window", joint_current_windows_, false);
+    readData(data_pkg, "actual_moment", joint_moments_, false);
+    readData(data_pkg, "joint_control_output", joint_control_outputs_, false);
     readData(data_pkg, "joint_temperatures", joint_temperatures_);
-    readData(data_pkg, "actual_joint_voltage", joint_voltages_);
+    readData(data_pkg, "actual_joint_voltage", joint_voltages_, false);
     readData(data_pkg, "target_speed_fraction", target_speed_fraction_);
     readData(data_pkg, "speed_scaling", speed_scaling_);
     readData(data_pkg, "runtime_state", runtime_state_);
@@ -500,7 +500,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readData(data_pkg, "tool_output_current", tool_output_current_);
     readData(data_pkg, "tool_temperature", tool_temperature_);
     readData(data_pkg, "robot_mode", robot_mode_);
-    readData(data_pkg, "joint_mode", joint_modes_);
+    readData(data_pkg, "joint_mode", joint_modes_, false);
     readData(data_pkg, "safety_mode", safety_mode_);
     readBitsetData<uint32_t>(data_pkg, "robot_status_bits", robot_status_bits_);
     readBitsetData<uint32_t>(data_pkg, "safety_status_bits", safety_status_bits_);
