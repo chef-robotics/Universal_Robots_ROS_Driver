@@ -1,4 +1,5 @@
 # Similar to sensor_msgs/JointState, but with more fields.
+# TODO(cj): Should probably add `has_*` flags / sentinel values.
 
 # Meta data
 #
@@ -37,9 +38,9 @@ float64[] actual_currents
 # RTDE `actual_current_window`
 float64[] actual_current_windows
 # RTDE `joint_control_output` -- possibly same as `actual_current`?
-float64[] joint_control_currents
+float64[] joint_control_outputs
 
-# Voltage data [V]: RTDE `actual_joint_voltages`
+# Voltage data [V]: RTDE `actual_joint_voltage`
 float64[] actual_voltages
 
 # Torque data [Nm]

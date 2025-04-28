@@ -50,10 +50,21 @@ static const std::bitset<11> in_error_bitset_(1 << toUnderlying(UrRtdeSafetyStat
 HardwareInterface::HardwareInterface()
   : joint_position_command_({ 0, 0, 0, 0, 0, 0 })
   , joint_velocity_command_({ 0, 0, 0, 0, 0, 0 })
+  , target_joint_positions_{ { 0, 0, 0, 0, 0, 0 } }
   , joint_positions_{ { 0, 0, 0, 0, 0, 0 } }
+  , target_joint_velocities_{ { 0, 0, 0, 0, 0, 0 } }
   , joint_velocities_{ { 0, 0, 0, 0, 0, 0 } }
+  , target_joint_accelerations_{ { 0, 0, 0, 0, 0, 0 } }
+  , joint_accelerations_{ { 0, 0, 0, 0, 0, 0 } }
+  , target_joint_efforts_{ { 0, 0, 0, 0, 0, 0 } }
   , joint_efforts_{ { 0, 0, 0, 0, 0, 0 } }
+  , joint_current_windows_{ { 0, 0, 0, 0, 0, 0 } }
+  , target_joint_moments_{ { 0, 0, 0, 0, 0, 0 } }
+  , joint_moments_{ { 0, 0, 0, 0, 0, 0 } }
+  , joint_control_outputs_{ { 0, 0, 0, 0, 0, 0 } }
+  , joint_voltages_{ { 0, 0, 0, 0, 0, 0 } }
   , joint_temperatures_{ { 0, 0, 0, 0, 0, 0 } }
+  , joint_modes_{ { 0, 0, 0, 0, 0, 0 } }
   , standard_analog_input_{ { 0, 0 } }
   , standard_analog_output_{ { 0, 0 } }
   , joint_names_(6)
@@ -364,6 +375,8 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
   pstop_ratios_pub_.reset(
       new realtime_tools::RealtimePublisher<ur_extra_msgs::ProtectiveStopRatios>(robot_hw_nh, "protective_stop_ratios",
                                                                                  1));
+  joint_state_extended_pub_.reset(
+      new realtime_tools::RealtimePublisher<ur_extra_msgs::JointStateExtended>(robot_hw_nh, "joint_state_extended", 1));
 
   // Set the speed slider fraction used by the robot's execution. Values should be between 0 and 1.
   // Only set this smaller than 1 if you are using the scaled controllers (as by default) or you know what you're
@@ -457,8 +470,20 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
   if (data_pkg)
   {
     packet_read_ = true;
+    readData(data_pkg, "target_q", target_joint_positions_);
+    readData(data_pkg, "target_qd", target_joint_velocities_);
+    readData(data_pkg, "target_qdd", target_joint_accelerations_);
+    readData(data_pkg, "target_current", target_joint_efforts_);
+    readData(data_pkg, "target_moment", target_joint_moments_);
     readData(data_pkg, "actual_q", joint_positions_);
     readData(data_pkg, "actual_qd", joint_velocities_);
+    readData(data_pkg, "actual_qdd", joint_accelerations_);
+    readData(data_pkg, "actual_current", joint_efforts_);
+    readData(data_pkg, "actual_current_window", joint_current_windows_);
+    readData(data_pkg, "actual_moment", joint_moments_);
+    readData(data_pkg, "joint_control_output", joint_control_outputs_);
+    readData(data_pkg, "joint_temperatures", joint_temperatures_);
+    readData(data_pkg, "actual_joint_voltage", joint_voltages_);
     readData(data_pkg, "target_speed_fraction", target_speed_fraction_);
     readData(data_pkg, "speed_scaling", speed_scaling_);
     readData(data_pkg, "runtime_state", runtime_state_);
@@ -475,15 +500,14 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readData(data_pkg, "tool_output_current", tool_output_current_);
     readData(data_pkg, "tool_temperature", tool_temperature_);
     readData(data_pkg, "robot_mode", robot_mode_);
+    readData(data_pkg, "joint_mode", joint_modes_);
     readData(data_pkg, "safety_mode", safety_mode_);
     readBitsetData<uint32_t>(data_pkg, "robot_status_bits", robot_status_bits_);
     readBitsetData<uint32_t>(data_pkg, "safety_status_bits", safety_status_bits_);
-    readData(data_pkg, "actual_current", joint_efforts_);
     readBitsetData<uint64_t>(data_pkg, "actual_digital_input_bits", actual_dig_in_bits_);
     readBitsetData<uint64_t>(data_pkg, "actual_digital_output_bits", actual_dig_out_bits_);
     readBitsetData<uint32_t>(data_pkg, "analog_io_types", analog_io_types_);
     readBitsetData<uint32_t>(data_pkg, "tool_analog_input_types", tool_analog_input_types_);
-    readData(data_pkg, "joint_temperatures", joint_temperatures_);
     readData(data_pkg, "joint_position_deviation_ratio", joint_position_deviation_ratio_, false,
              ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO);
     readData(data_pkg, "collision_detection_ratio", collision_detection_ratio_, false,
@@ -499,6 +523,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     transformForceTorque();
     publishPose();
     publishRobotAndSafetyMode();
+    publishJointStateExtended(time);
     publishProtectiveStopRatios(time);
     if (this->enable_temperature_log_) {
       publishJointTemperatures(time);
@@ -773,6 +798,78 @@ void HardwareInterface::publishProtectiveStopRatios(const ros::Time& timestamp)
     }
   }
 }
+
+void HardwareInterface::publishJointStateExtended(const ros::Time& timestamp)
+{
+  if (!joint_state_extended_pub_)
+    return;
+
+  if (!joint_state_extended_pub_->trylock())
+    return;
+
+  auto& msg = joint_state_extended_pub_->msg_;
+  msg.header.stamp = timestamp;
+
+  // One-time initialization: copy joint names and pre-size all arrays
+  static bool first_time = true;
+  if (first_time)
+  {
+    const size_t N = joint_names_.size();
+    msg.names = joint_names_;
+
+    msg.target_positions.resize(N);
+    msg.actual_positions.resize(N);
+
+    msg.target_velocities.resize(N);
+    msg.actual_velocities.resize(N);
+
+    msg.target_accelerations.resize(N);
+    msg.actual_accelerations.resize(N);
+
+    msg.target_currents.resize(N);
+    msg.actual_currents.resize(N);
+    msg.actual_current_windows.resize(N);
+    msg.joint_control_outputs.resize(N);
+
+    msg.actual_voltages.resize(N);
+
+    msg.target_torques.resize(N);
+    msg.actual_torques.resize(N);
+
+    msg.temperatures.resize(N);
+    msg.control_modes.resize(N);
+
+    first_time = false;
+  }
+
+  // Fast, deterministic in-place updates every cycle
+  std::copy(target_joint_positions_.begin(),    target_joint_positions_.end(),    msg.target_positions.begin());
+  std::copy(joint_positions_.begin(),           joint_positions_.end(),           msg.actual_positions.begin());
+
+  std::copy(target_joint_velocities_.begin(),   target_joint_velocities_.end(),   msg.target_velocities.begin());
+  std::copy(joint_velocities_.begin(),          joint_velocities_.end(),          msg.actual_velocities.begin());
+
+  std::copy(target_joint_accelerations_.begin(),target_joint_accelerations_.end(),msg.target_accelerations.begin());
+  std::copy(joint_accelerations_.begin(),       joint_accelerations_.end(),       msg.actual_accelerations.begin());
+
+  std::copy(target_joint_efforts_.begin(),      target_joint_efforts_.end(),      msg.target_currents.begin());
+  std::copy(joint_efforts_.begin(),             joint_efforts_.end(),             msg.actual_currents.begin());
+  std::copy(joint_current_windows_.begin(),     joint_current_windows_.end(),     msg.actual_current_windows.begin());
+  std::copy(joint_control_outputs_.begin(),     joint_control_outputs_.end(),     msg.joint_control_outputs.begin());
+
+  std::copy(joint_voltages_.begin(),            joint_voltages_.end(),            msg.actual_voltages.begin());
+
+  std::copy(target_joint_moments_.begin(),      target_joint_moments_.end(),      msg.target_torques.begin());
+  std::copy(joint_moments_.begin(),             joint_moments_.end(),             msg.actual_torques.begin());
+
+  std::copy(joint_temperatures_.begin(),        joint_temperatures_.end(),        msg.temperatures.begin());
+
+  // joint_modes_ is an integer array
+  std::copy(joint_modes_.begin(),               joint_modes_.end(),               msg.control_modes.begin());
+
+  joint_state_extended_pub_->unlockAndPublish();
+}
+
 
 
 void HardwareInterface::extractRobotStatus()

@@ -47,6 +47,7 @@
 
 #include <ur_extra_msgs/JointTemperatures.h>
 #include <ur_extra_msgs/ProtectiveStopRatios.h>
+#include <ur_extra_msgs/JointStateExtended.h>
 
 #include <ur_controllers/speed_scaling_interface.h>
 #include <ur_controllers/scaled_joint_command_interface.h>
@@ -193,6 +194,7 @@ protected:
   void publishRobotAndSafetyMode();
   void publishJointTemperatures(const ros::Time& timestamp);
   void publishProtectiveStopRatios(const ros::Time& timestamp);
+  void publishJointStateExtended(const ros::Time& timestamp);
 
   /*!
    * \brief Read and evaluate data in order to set robot status properties for industrial
@@ -240,10 +242,20 @@ protected:
 
   vector6d_t joint_position_command_;
   vector6d_t joint_velocity_command_;
+  vector6d_t target_joint_positions_;
   vector6d_t joint_positions_;
+  vector6d_t target_joint_velocities_;
   vector6d_t joint_velocities_;
+  vector6d_t target_joint_accelerations_;
+  vector6d_t joint_accelerations_;
+  vector6d_t target_joint_efforts_;
   vector6d_t joint_efforts_;
+  vector6d_t joint_current_windows_;
+  vector6d_t target_joint_moments_;
+  vector6d_t joint_moments_;
+  vector6d_t joint_control_outputs_;
   vector6d_t joint_temperatures_;
+  vector6d_t joint_voltages_;
   vector6d_t fts_measurements_;
   vector6d_t tcp_pose_;
   std::bitset<18> actual_dig_out_bits_;
@@ -265,6 +277,7 @@ protected:
   double speed_scaling_combined_;
   std::vector<std::string> joint_names_;
   int32_t robot_mode_;
+  vector6int32_t joint_modes_;
   int32_t safety_mode_;
   std::bitset<4> robot_status_bits_;
   std::bitset<11> safety_status_bits_;
@@ -278,6 +291,7 @@ protected:
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_dashboard_msgs::SafetyMode>> safety_mode_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::JointTemperatures>> joint_temperatures_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::ProtectiveStopRatios>> pstop_ratios_pub_;
+  std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::JointStateExtended>> joint_state_extended_pub_;
 
   ros::ServiceServer set_speed_slider_srv_;
   ros::ServiceServer set_io_srv_;
