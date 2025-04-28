@@ -512,6 +512,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
              ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO);
     readData(data_pkg, "collision_detection_ratio", collision_detection_ratio_, false,
              ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO);
+    readData(data_pkg, "time_scale_source", time_scale_source_, false, 0);
 
     extractRobotStatus();
 
@@ -794,6 +795,7 @@ void HardwareInterface::publishProtectiveStopRatios(const ros::Time& timestamp)
       pstop_ratios_pub_->msg_.header.stamp = timestamp;
       pstop_ratios_pub_->msg_.collision_detection_ratio = collision_detection_ratio_;
       pstop_ratios_pub_->msg_.joint_position_deviation_ratio = joint_position_deviation_ratio_;
+      pstop_ratios_pub_->msg_.time_scale_source = time_scale_source_;
       pstop_ratios_pub_->unlockAndPublish();
     }
   }

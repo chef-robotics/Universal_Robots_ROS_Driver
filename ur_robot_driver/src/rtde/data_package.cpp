@@ -71,6 +71,7 @@ std::unordered_map<std::string, DataPackage::_rtde_type_variant> DataPackage::g_
   { "safety_status_bits", uint32_t() },
   { "joint_position_deviation_ratio", double() },
   { "collision_detection_ratio", double() },
+  { "time_scale_source", int32_t() },
   { "analog_io_types", uint32_t() },
   { "standard_analog_input0", double() },
   { "standard_analog_input1", double() },
