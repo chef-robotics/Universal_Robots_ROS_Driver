@@ -1,58 +1,45 @@
-# Similar to sensor_msgs/JointState, but with more fields.
-# TODO(cj): Should probably add `has_*` flags / sentinel values.
+# Similar to sensor_msgs/JointState, but with more fields
 
-# Meta data
-#
+# Metadata
 # `stamp` corresponds to the time when the state was recorded.
 Header header
 # NB: The order in all other lists follows the order of `names`.
 string[] names
 
 # Position data [rad]
-#
-# RTDE `target_q`
+# RTDE 'target_q'
 float64[] target_positions
-# RTDE `actual_q`
+# RTDE 'actual_q'
 float64[] actual_positions
 
 # Velocity data [rad/s]
-#
-# RTDE `target_qd`
+# RTDE 'target_qd'
 float64[] target_velocities
-# RTDE `actual_qd`
+# RTDE 'actual_qd'
 float64[] actual_velocities
 
 # Acceleration data [rad/s^2]
-#
-# RTDE `target_qdd`
+# RTDE 'target_qdd'  (only target available)
 float64[] target_accelerations
-# RTDE `actual_qdd` -- possibly unavailable?
-float64[] actual_accelerations
 
-# Current data [mA]
-#
-# RTDE `target_current`
+# Current data [A]
+# RTDE 'target_current'
 float64[] target_currents
-# RTDE `actual_current`
+# RTDE 'actual_current'
 float64[] actual_currents
-# RTDE `actual_current_window`
+# RTDE 'actual_current_window'
 float64[] actual_current_windows
-# RTDE `joint_control_output` -- possibly same as `actual_current`?
-float64[] joint_control_outputs
 
-# Voltage data [V]: RTDE `actual_joint_voltage`
+# Voltage data [V]
+# RTDE 'actual_joint_voltage' (no target voltage)
 float64[] actual_voltages
 
 # Torque data [Nm]
-#
-# RTDE `target_moment`
+# RTDE 'target_moment'  (only target available)
 float64[] target_torques
-# RTDE `actual_moment` -- possibly unavailable?
-float64[] actual_torques
 
 # Contextual data
-#
-# Temperature [C]: RTDE `joint_temperatures`
-float64[] temperatures
-# Mode: RTDE `joint_mode`
+# RTDE 'joint_mode'
 int32[] control_modes
+# RTDE 'joint_control_output' (typically the same as 'actual_current')
+float64[] joint_control_outputs

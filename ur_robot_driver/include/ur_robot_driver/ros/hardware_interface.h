@@ -277,7 +277,7 @@ protected:
   double speed_scaling_combined_;
   std::vector<std::string> joint_names_;
   int32_t robot_mode_;
-  vector6int32_t joint_modes_;
+  vector6int32_t joint_control_modes_;
   int32_t safety_mode_;
   std::bitset<4> robot_status_bits_;
   std::bitset<11> safety_status_bits_;
