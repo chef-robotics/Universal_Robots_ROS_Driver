@@ -40,8 +40,8 @@ std::unordered_map<std::string, DataPackage::_rtde_type_variant> DataPackage::g_
   { "actual_q", vector6d_t() },
   { "actual_qd", vector6d_t() },
   // NB: Not available over RTDE
-  { "actual_qdd", vector6d_t() },
-  //{ "actual_current", vector6d_t() },
+  //{ "actual_qdd", vector6d_t() },
+  { "actual_current", vector6d_t() },
   { "actual_current_window", vector6d_t() },
   // NB: Not available over RTDE
   //{ "actual_moment", vector6d_t() },
