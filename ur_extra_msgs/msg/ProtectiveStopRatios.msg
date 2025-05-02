@@ -15,6 +15,8 @@ float64 collision_detection_ratio
 # No documentation on when this was introduced; assuming it has always been there.
 float64 joint_position_deviation_ratio
 
-# RTDE `time_scale_source`
+# RTDE 'time_scale_source'
 # Introduced in Polyscope 5.17.0
+# See the RTDE guide for a breakdown of the values:
+# https://www.universal-robots.com/articles/ur/interface-communication/real-time-data-exchange-rtde-guide/
 int32 time_scale_source
