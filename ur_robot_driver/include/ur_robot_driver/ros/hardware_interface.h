@@ -205,7 +205,7 @@ protected:
   bool stopControl(std_srvs::TriggerRequest& req, std_srvs::TriggerResponse& res);
 
   template <typename T>
-  void readData(const std::unique_ptr<rtde_interface::DataPackage>& data_pkg, const std::string& var_name, T& data,
+  bool readData(const std::unique_ptr<rtde_interface::DataPackage>& data_pkg, const std::string& var_name, T& data,
                 bool throw_on_error = true, const T& default_value = T{});
   template <typename T, size_t N>
   void readBitsetData(const std::unique_ptr<rtde_interface::DataPackage>& data_pkg, const std::string& var_name,
@@ -243,19 +243,27 @@ protected:
   vector6d_t joint_position_command_;
   vector6d_t joint_velocity_command_;
   vector6d_t target_joint_positions_;
+  bool has_target_joint_positions_{false};
   vector6d_t joint_positions_;
   vector6d_t target_joint_velocities_;
+  bool has_target_joint_velocities_{false};
   vector6d_t joint_velocities_;
   vector6d_t target_joint_accelerations_;
+  bool has_target_joint_accelerations_{false};
   vector6d_t joint_accelerations_;
   vector6d_t target_joint_efforts_;
+  bool has_target_joint_efforts_{false};
   vector6d_t joint_efforts_;
   vector6d_t joint_current_windows_;
+  bool has_joint_current_windows_{false};
   vector6d_t target_joint_moments_;
-  vector6d_t joint_moments_;
+  bool has_target_joint_moments_{false};
   vector6d_t joint_control_outputs_;
+  bool has_joint_control_outputs_{false};
   vector6d_t joint_temperatures_;
+  bool has_joint_temperatures_{false};
   vector6d_t joint_voltages_;
+  bool has_joint_voltages_{false};
   vector6d_t fts_measurements_;
   vector6d_t tcp_pose_;
   std::bitset<18> actual_dig_out_bits_;
@@ -278,6 +286,7 @@ protected:
   std::vector<std::string> joint_names_;
   int32_t robot_mode_;
   vector6int32_t joint_control_modes_;
+  bool has_joint_control_modes_{false};
   int32_t safety_mode_;
   std::bitset<4> robot_status_bits_;
   std::bitset<11> safety_status_bits_;

@@ -410,22 +410,21 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
 }
 
 template <typename T>
-void HardwareInterface::readData(const std::unique_ptr<rtde_interface::DataPackage>& data_pkg,
+bool HardwareInterface::readData(const std::unique_ptr<rtde_interface::DataPackage>& data_pkg,
                                  const std::string& var_name, T& data, bool throw_on_error, const T& default_value)
 {
-  if (!data_pkg->getData(var_name, data))
+  if (data_pkg->getData(var_name, data))
   {
-    if (throw_on_error)
-    {
-      // This throwing should never happen unless misconfigured
-      std::string error_msg = "Did not find '" + var_name + "' in data sent from robot. This should not happen!";
-      throw std::runtime_error(error_msg);
-    }
-    else
-    {
-      data = default_value;
-    }
+    return true; // actual data arrived
   }
+  if (throw_on_error)
+  {
+    std::string error_msg =
+      "Did not find '" + var_name + "' in data sent from robot. This should not happen!";
+    throw std::runtime_error(error_msg);
+  }
+  data = default_value;
+  return false; // we used the default
 }
 
 template <typename T, size_t N>
@@ -459,17 +458,17 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
   if (data_pkg)
   {
     packet_read_ = true;
-    readData(data_pkg, "target_q", target_joint_positions_, false, decltype(target_joint_positions_){});
-    readData(data_pkg, "target_qd", target_joint_velocities_, false, decltype(target_joint_velocities_){});
-    readData(data_pkg, "target_qdd", target_joint_accelerations_, false, decltype(target_joint_accelerations_){});
-    readData(data_pkg, "target_current", target_joint_efforts_, false, decltype(target_joint_efforts_){});
-    readData(data_pkg, "target_moment", target_joint_moments_, false, decltype(target_joint_moments_){});
+    has_target_joint_positions_ = readData(data_pkg, "target_q", target_joint_positions_, false);
+    has_target_joint_velocities_ = readData(data_pkg, "target_qd", target_joint_velocities_, false);
+    has_target_joint_accelerations_ = readData(data_pkg, "target_qdd", target_joint_accelerations_, false);
+    has_target_joint_efforts_ = readData(data_pkg, "target_current", target_joint_efforts_, false);
+    has_target_joint_moments_ = readData(data_pkg, "target_moment", target_joint_moments_, false);
     readData(data_pkg, "actual_q", joint_positions_);
     readData(data_pkg, "actual_qd", joint_velocities_);
     readData(data_pkg, "actual_current", joint_efforts_);
-    readData(data_pkg, "actual_current_window", joint_current_windows_, false, decltype(joint_current_windows_){});
-    readData(data_pkg, "joint_temperatures", joint_temperatures_);
-    readData(data_pkg, "actual_joint_voltage", joint_voltages_, false, decltype(joint_voltages_){});
+    has_joint_current_windows_ = readData(data_pkg, "actual_current_window", joint_current_windows_, false);
+    has_joint_temperatures_ = readData(data_pkg, "joint_temperatures", joint_temperatures_, false);
+    has_joint_voltages_ = readData(data_pkg, "actual_joint_voltage", joint_voltages_, false);
     readData(data_pkg, "target_speed_fraction", target_speed_fraction_);
     readData(data_pkg, "speed_scaling", speed_scaling_);
     readData(data_pkg, "runtime_state", runtime_state_);
@@ -486,8 +485,8 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readData(data_pkg, "tool_output_current", tool_output_current_);
     readData(data_pkg, "tool_temperature", tool_temperature_);
     readData(data_pkg, "robot_mode", robot_mode_);
-    readData(data_pkg, "joint_mode", joint_control_modes_, false, decltype(joint_control_modes_){});
-    readData(data_pkg, "joint_control_output", joint_control_outputs_, false, decltype(joint_control_outputs_){});
+    has_joint_control_modes_ = readData(data_pkg, "joint_mode", joint_control_modes_, false);
+    has_joint_control_outputs_ = readData(data_pkg, "joint_control_output", joint_control_outputs_, false);
     readData(data_pkg, "safety_mode", safety_mode_);
     readBitsetData<uint32_t>(data_pkg, "robot_status_bits", robot_status_bits_);
     readBitsetData<uint32_t>(data_pkg, "safety_status_bits", safety_status_bits_);
@@ -754,23 +753,32 @@ void HardwareInterface::publishPose()
 
 void HardwareInterface::publishJointTemperatures(const ros::Time& timestamp)
 {
-  if (joint_temperatures_pub_)
+  if (!joint_temperatures_pub_)
+    return;
+  if (!joint_temperatures_pub_->trylock())
+    return;
+
+  auto& msg = joint_temperatures_pub_->msg_;
+  msg.header.stamp = timestamp;
+
+  // One-time setup: reserve capacity for names & temps
+  static bool first_time = true;
+  if (first_time)
   {
-    if (joint_temperatures_pub_->trylock())
-    {
-      joint_temperatures_pub_->msg_.header.stamp = timestamp;
-      joint_temperatures_pub_->msg_.joint_names.clear();
-      joint_temperatures_pub_->msg_.temperatures.clear();
+    const size_t N = joint_names_.size();
+    msg.joint_names = joint_names_;
+    msg.joint_names.reserve(N);
+    msg.temperatures.reserve(N);
 
-      for (size_t i = 0; i < joint_names_.size(); i++)
-      {
-        joint_temperatures_pub_->msg_.joint_names.push_back(joint_names_[i]);
-        joint_temperatures_pub_->msg_.temperatures.push_back(joint_temperatures_[i]);
-      }
-
-      joint_temperatures_pub_->unlockAndPublish();
-    }
+    first_time = false;
   }
+
+  if (has_joint_temperatures_)
+    msg.temperatures.assign(joint_temperatures_.begin(), joint_temperatures_.end());
+  else
+    msg.temperatures.clear();
+
+  joint_temperatures_pub_->unlockAndPublish();
 }
 
 void HardwareInterface::publishProtectiveStopRatios(const ros::Time& timestamp)
@@ -820,19 +828,53 @@ void HardwareInterface::publishJointStateExtended(const ros::Time& timestamp)
     first_time = false;
   }
 
-  // Each assign() clears old contents and copies exactly
-  msg.target_positions.assign(target_joint_positions_.begin(), target_joint_positions_.end());
+  if (has_target_joint_positions_)
+    msg.target_positions.assign(target_joint_positions_.begin(), target_joint_positions_.end());
+  else
+    msg.target_positions.clear();
   msg.actual_positions.assign(joint_positions_.begin(), joint_positions_.end());
-  msg.target_velocities.assign(target_joint_velocities_.begin(), target_joint_velocities_.end());
+
+  if (has_target_joint_velocities_)
+    msg.target_velocities.assign(target_joint_velocities_.begin(), target_joint_velocities_.end());
+  else
+    msg.target_velocities.clear();
   msg.actual_velocities.assign(joint_velocities_.begin(), joint_velocities_.end());
-  msg.target_accelerations.assign(target_joint_accelerations_.begin(),target_joint_accelerations_.end());
-  msg.target_currents.assign(target_joint_efforts_.begin(), target_joint_efforts_.end());
+
+  if (has_target_joint_accelerations_)
+    msg.target_accelerations.assign(target_joint_accelerations_.begin(), target_joint_accelerations_.end());
+  else
+    msg.target_accelerations.clear();
+
+  if (has_target_joint_efforts_)
+    msg.target_currents.assign(target_joint_efforts_.begin(), target_joint_efforts_.end());
+  else
+    msg.target_currents.clear();
   msg.actual_currents.assign(joint_efforts_.begin(), joint_efforts_.end());
-  msg.actual_current_windows.assign(joint_current_windows_.begin(), joint_current_windows_.end());
-  msg.actual_voltages.assign(joint_voltages_.begin(), joint_voltages_.end());
-  msg.target_torques.assign(target_joint_moments_.begin(), target_joint_moments_.end());
-  msg.control_modes.assign(joint_control_modes_.begin(), joint_control_modes_.end());
-  msg.joint_control_outputs.assign(joint_control_outputs_.begin(), joint_control_outputs_.end());
+
+  if (has_joint_current_windows_)
+    msg.actual_current_windows.assign(joint_current_windows_.begin(), joint_current_windows_.end());
+  else
+    msg.actual_current_windows.clear();
+
+  if (has_joint_voltages_)
+    msg.actual_voltages.assign(joint_voltages_.begin(), joint_voltages_.end());
+  else
+    msg.actual_voltages.clear();
+
+  if (has_target_joint_moments_)
+    msg.target_torques.assign(target_joint_moments_.begin(), target_joint_moments_.end());
+  else
+    msg.target_torques.clear();
+
+  if (has_joint_control_modes_)
+    msg.control_modes.assign(joint_control_modes_.begin(), joint_control_modes_.end());
+  else
+    msg.control_modes.clear();
+
+  if (has_joint_control_outputs_)
+    msg.joint_control_outputs.assign(joint_control_outputs_.begin(), joint_control_outputs_.end());
+  else
+    msg.joint_control_outputs.clear();
 
   joint_state_extended_pub_->unlockAndPublish();
 }
