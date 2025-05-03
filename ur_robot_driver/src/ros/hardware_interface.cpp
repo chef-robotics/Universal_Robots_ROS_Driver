@@ -415,7 +415,7 @@ bool HardwareInterface::readData(const std::unique_ptr<rtde_interface::DataPacka
 {
   if (data_pkg->getData(var_name, data))
   {
-    return true; // actual data arrived
+    return true;
   }
   if (throw_on_error)
   {
@@ -424,7 +424,7 @@ bool HardwareInterface::readData(const std::unique_ptr<rtde_interface::DataPacka
     throw std::runtime_error(error_msg);
   }
   data = default_value;
-  return false; // we used the default
+  return false;
 }
 
 template <typename T, size_t N>
@@ -878,8 +878,6 @@ void HardwareInterface::publishJointStateExtended(const ros::Time& timestamp)
 
   joint_state_extended_pub_->unlockAndPublish();
 }
-
-
 
 void HardwareInterface::extractRobotStatus()
 {

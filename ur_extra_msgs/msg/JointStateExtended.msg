@@ -19,7 +19,7 @@ float64[] target_velocities
 float64[] actual_velocities
 
 # Acceleration data [rad/s^2]
-# RTDE 'target_qdd'  (only target available)
+# RTDE 'target_qdd' (only target available)
 float64[] target_accelerations
 
 # Current data [A]
@@ -35,7 +35,7 @@ float64[] actual_current_windows
 float64[] actual_voltages
 
 # Torque data [Nm]
-# RTDE 'target_moment'  (only target available)
+# RTDE 'target_moment' (only target available)
 float64[] target_torques
 
 # Contextual data
