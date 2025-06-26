@@ -8,19 +8,19 @@ string[] names
 
 # Position data [rad]
 # RTDE 'target_q'
-float64[] target_positions
+# float64[] target_positions
 # RTDE 'actual_q'
-float64[] actual_positions
+# float64[] actual_positions
 
 # Velocity data [rad/s]
 # RTDE 'target_qd'
-float64[] target_velocities
+# float64[] target_velocities
 # RTDE 'actual_qd'
-float64[] actual_velocities
+# float64[] actual_velocities
 
 # Acceleration data [rad/s^2]
 # RTDE 'target_qdd' (only target available)
-float64[] target_accelerations
+# float64[] target_accelerations
 
 # Current data [A]
 # RTDE 'target_current'
