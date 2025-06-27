@@ -405,6 +405,23 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
         resp.success = this->ur_driver_->sendScript(cmd.str());
         return true;
       });
+    
+  // joint temperature publisher: reserve capacity for temperatures.
+  const size_t N = joint_names_.size();
+  auto& temperatures_msg = joint_temperatures_pub_->msg_;
+  temperatures_msg.joint_names = joint_names_;
+  temperatures_msg.temperatures.reserve(N);
+
+  // joint state extended publisher: copy joint names and reserve capacity.
+  auto& joint_state_extended_msg = joint_state_extended_pub_->msg_;
+  joint_state_extended_msg.names = joint_names_;
+  joint_state_extended_msg.target_currents.reserve(N);
+  joint_state_extended_msg.actual_currents.reserve(N);
+  joint_state_extended_msg.actual_current_windows.reserve(N);
+  joint_state_extended_msg.actual_voltages.reserve(N);
+  joint_state_extended_msg.target_torques.reserve(N);
+  joint_state_extended_msg.joint_control_modes.reserve(N);
+  joint_state_extended_msg.joint_control_outputs.reserve(N);
 
   return true;
 }
@@ -758,22 +775,11 @@ void HardwareInterface::publishJointTemperatures(const ros::Time& timestamp)
   auto& msg = joint_temperatures_pub_->msg_;
   msg.header.stamp = timestamp;
 
-  // One-time setup: reserve capacity for names & temps
-  static bool first_time = true;
-  if (first_time)
-  {
-    const size_t N = joint_names_.size();
-    msg.joint_names = joint_names_;
-    msg.joint_names.reserve(N);
-    msg.temperatures.reserve(N);
-
-    first_time = false;
-  }
-
-  if (has_joint_temperatures_)
+  if (has_joint_temperatures_) {
     msg.temperatures.assign(joint_temperatures_.begin(), joint_temperatures_.end());
-  else
+  } else {
     msg.temperatures.clear();
+  }
 
   joint_temperatures_pub_->unlockAndPublish();
 }
@@ -795,61 +801,53 @@ void HardwareInterface::publishProtectiveStopRatios(const ros::Time& timestamp)
 
 void HardwareInterface::publishJointStateExtended(const ros::Time& timestamp)
 {
-  if (!joint_state_extended_pub_)
+  if (!joint_state_extended_pub_) {
     return;
-  if (!joint_state_extended_pub_->trylock())
+  }
+  if (!joint_state_extended_pub_->trylock()) {
     return;
+  }
 
   auto& msg = joint_state_extended_pub_->msg_;
   msg.header.stamp = timestamp;
 
-  // One-time initialization: copy joint names and reserve capacity
-  static bool first_time = true;
-  if (first_time)
-  {
-    const size_t N = joint_names_.size();
-    msg.names = joint_names_;
-    msg.target_currents.reserve(N);
-    msg.actual_currents.reserve(N);
-    msg.actual_current_windows.reserve(N);
-    msg.actual_voltages.reserve(N);
-    msg.target_torques.reserve(N);
-    msg.control_modes.reserve(N);
-    msg.joint_control_outputs.reserve(N);
-
-    first_time = false;
+  if (has_target_joint_efforts_) {
+    msg.target_currents.assign(target_joint_efforts_.begin(), target_joint_efforts_.end());
+  } else {
+    msg.target_currents.clear();
   }
 
-  if (has_target_joint_efforts_)
-    msg.target_currents.assign(target_joint_efforts_.begin(), target_joint_efforts_.end());
-  else
-    msg.target_currents.clear();
   msg.actual_currents.assign(joint_efforts_.begin(), joint_efforts_.end());
 
-  if (has_joint_current_windows_)
+  if (has_joint_current_windows_) {
     msg.actual_current_windows.assign(joint_current_windows_.begin(), joint_current_windows_.end());
-  else
+  } else {
     msg.actual_current_windows.clear();
+  }
 
-  if (has_joint_voltages_)
+  if (has_joint_voltages_) {
     msg.actual_voltages.assign(joint_voltages_.begin(), joint_voltages_.end());
-  else
+  } else {
     msg.actual_voltages.clear();
+  }
 
-  if (has_target_joint_moments_)
+  if (has_target_joint_moments_) {
     msg.target_torques.assign(target_joint_moments_.begin(), target_joint_moments_.end());
-  else
+  } else {
     msg.target_torques.clear();
+  }
 
-  if (has_joint_control_modes_)
-    msg.control_modes.assign(joint_control_modes_.begin(), joint_control_modes_.end());
-  else
-    msg.control_modes.clear();
+  if (has_joint_control_modes_) {
+    msg.joint_control_modes.assign(joint_control_modes_.begin(), joint_control_modes_.end());
+  } else {
+    msg.joint_control_modes.clear();
+  }
 
-  if (has_joint_control_outputs_)
+  if (has_joint_control_outputs_) {
     msg.joint_control_outputs.assign(joint_control_outputs_.begin(), joint_control_outputs_.end());
-  else
+  } else {
     msg.joint_control_outputs.clear();
+  }
 
   joint_state_extended_pub_->unlockAndPublish();
 }

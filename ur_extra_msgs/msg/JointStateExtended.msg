@@ -28,6 +28,6 @@ float64[] target_torques
 
 # Contextual data
 # RTDE 'joint_mode'
-int32[] control_modes
+int32[] joint_control_modes
 # RTDE 'joint_control_output' (typically the same as 'actual_current')
 float64[] joint_control_outputs
