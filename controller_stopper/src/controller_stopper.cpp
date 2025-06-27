@@ -31,6 +31,7 @@
 #include <controller_manager_msgs/ListControllers.h>
 
 #include <ios>
+#include <future>
 
 ControllerStopper::ControllerStopper(const ros::NodeHandle& nh) : nh_(nh), priv_nh_("~"), robot_running_(true)
 {
@@ -71,10 +72,28 @@ ControllerStopper::ControllerStopper(const ros::NodeHandle& nh) : nh_(nh), priv_
   ROS_DEBUG("Initialization finished");
 }
 
+template <typename ServiceType>
+bool callServiceWithTimeout(ros::ServiceClient& client, ServiceType& srv, double timeout_sec) {
+    auto future = std::async(std::launch::async, [&]() {
+        return client.call(srv);
+    });
+
+    if (future.wait_for(std::chrono::duration<double>(timeout_sec)) == std::future_status::ready) {
+        return future.get();  // true if the service call succeeded
+    } else {
+        ROS_WARN("Service call timed out after %.2f seconds", timeout_sec);
+        return false;
+    }
+}
+
 void ControllerStopper::findStoppableControllers()
 {
   controller_manager_msgs::ListControllers list_srv;
-  controller_list_srv_.call(list_srv);
+  if (!callServiceWithTimeout<controller_manager_msgs::ListControllers>(controller_list_srv_, list_srv, 5.0))
+  {
+    ROS_ERROR_STREAM("Could not list controllers");
+    return;
+  }
   stopped_controllers_.clear();
   for (auto& controller : list_srv.response.controller)
   {
@@ -101,7 +120,7 @@ void ControllerStopper::robotRunningCallback(const std_msgs::BoolConstPtr& msg)
     controller_manager_msgs::SwitchController srv;
     srv.request.strictness = srv.request.STRICT;
     srv.request.start_controllers = stopped_controllers_;
-    if (!controller_manager_srv_.call(srv))
+    if (!callServiceWithTimeout<controller_manager_msgs::SwitchController>(controller_manager_srv_, srv, 5.0))
     {
       ROS_ERROR_STREAM("Could not activate requested controllers");
     }
@@ -114,7 +133,7 @@ void ControllerStopper::robotRunningCallback(const std_msgs::BoolConstPtr& msg)
     controller_manager_msgs::SwitchController srv;
     srv.request.strictness = srv.request.STRICT;
     srv.request.stop_controllers = stopped_controllers_;
-    if (!controller_manager_srv_.call(srv))
+    if (!callServiceWithTimeout<controller_manager_msgs::SwitchController>(controller_manager_srv_, srv, 5.0))
     {
       ROS_ERROR_STREAM("Could not stop requested controllers");
     }
