@@ -458,9 +458,6 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
   if (data_pkg)
   {
     packet_read_ = true;
-    has_target_joint_positions_ = readData(data_pkg, "target_q", target_joint_positions_, false);
-    has_target_joint_velocities_ = readData(data_pkg, "target_qd", target_joint_velocities_, false);
-    has_target_joint_accelerations_ = readData(data_pkg, "target_qdd", target_joint_accelerations_, false);
     has_target_joint_efforts_ = readData(data_pkg, "target_current", target_joint_efforts_, false);
     has_target_joint_moments_ = readData(data_pkg, "target_moment", target_joint_moments_, false);
     readData(data_pkg, "actual_q", joint_positions_);
@@ -812,11 +809,6 @@ void HardwareInterface::publishJointStateExtended(const ros::Time& timestamp)
   {
     const size_t N = joint_names_.size();
     msg.names = joint_names_;
-    // msg.target_positions.reserve(N);
-    // msg.actual_positions.reserve(N);
-    // msg.target_velocities.reserve(N);
-    // msg.actual_velocities.reserve(N);
-    // msg.target_accelerations.reserve(N);
     msg.target_currents.reserve(N);
     msg.actual_currents.reserve(N);
     msg.actual_current_windows.reserve(N);
@@ -827,23 +819,6 @@ void HardwareInterface::publishJointStateExtended(const ros::Time& timestamp)
 
     first_time = false;
   }
-
-  // if (has_target_joint_positions_)
-  //   msg.target_positions.assign(target_joint_positions_.begin(), target_joint_positions_.end());
-  // else
-  //   msg.target_positions.clear();
-  // msg.actual_positions.assign(joint_positions_.begin(), joint_positions_.end());
-
-  // if (has_target_joint_velocities_)
-  //   msg.target_velocities.assign(target_joint_velocities_.begin(), target_joint_velocities_.end());
-  // else
-  //   msg.target_velocities.clear();
-  // msg.actual_velocities.assign(joint_velocities_.begin(), joint_velocities_.end());
-
-  // if (has_target_joint_accelerations_)
-  //   msg.target_accelerations.assign(target_joint_accelerations_.begin(), target_joint_accelerations_.end());
-  // else
-  //   msg.target_accelerations.clear();
 
   if (has_target_joint_efforts_)
     msg.target_currents.assign(target_joint_efforts_.begin(), target_joint_efforts_.end());

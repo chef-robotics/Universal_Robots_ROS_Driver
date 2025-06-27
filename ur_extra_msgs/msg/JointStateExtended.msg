@@ -6,21 +6,9 @@ Header header
 # NB: The order in all other lists follows the order of `names`.
 string[] names
 
-# Position data [rad]
-# RTDE 'target_q'
-# float64[] target_positions
-# RTDE 'actual_q'
-# float64[] actual_positions
-
-# Velocity data [rad/s]
-# RTDE 'target_qd'
-# float64[] target_velocities
-# RTDE 'actual_qd'
-# float64[] actual_velocities
-
-# Acceleration data [rad/s^2]
-# RTDE 'target_qdd' (only target available)
-# float64[] target_accelerations
+# For target / actual positions, target / actual actual_velocities,
+# and target accelerations, refer to the state output message
+# of the controller, which is published with the same header stamp.
 
 # Current data [A]
 # RTDE 'target_current'

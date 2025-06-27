@@ -242,15 +242,8 @@ protected:
 
   vector6d_t joint_position_command_;
   vector6d_t joint_velocity_command_;
-  vector6d_t target_joint_positions_;
-  bool has_target_joint_positions_{false};
   vector6d_t joint_positions_;
-  vector6d_t target_joint_velocities_;
-  bool has_target_joint_velocities_{false};
   vector6d_t joint_velocities_;
-  vector6d_t target_joint_accelerations_;
-  bool has_target_joint_accelerations_{false};
-  vector6d_t joint_accelerations_;
   vector6d_t target_joint_efforts_;
   bool has_target_joint_efforts_{false};
   vector6d_t joint_efforts_;
