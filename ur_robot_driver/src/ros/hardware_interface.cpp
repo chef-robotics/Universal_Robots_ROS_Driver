@@ -905,7 +905,7 @@ void HardwareInterface::extractRobotStatus()
   robot_status_resource_.error_code = 0;
 }
 
-void HardwareInterface::publishIOData()
+void HardwareInterface::publishIOData(const ros::Time& timestamp)
 {
   if (io_pub_)
   {
