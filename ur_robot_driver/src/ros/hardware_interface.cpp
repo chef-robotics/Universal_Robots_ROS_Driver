@@ -332,7 +332,7 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
   registerInterface(&robot_status_interface_);
 
   tcp_pose_pub_.reset(new realtime_tools::RealtimePublisher<tf2_msgs::TFMessage>(root_nh, "/tf", 100));
-  io_pub_.reset(new realtime_tools::RealtimePublisher<ur_msgs::IOStates>(robot_hw_nh, "io_states", 1));
+  io_pub_.reset(new realtime_tools::RealtimePublisher<ur_extra_msgs::IOStatesStamped>(robot_hw_nh, "io_states", 1));
   io_pub_->msg_.digital_in_states.resize(actual_dig_in_bits_.size());
   io_pub_->msg_.digital_out_states.resize(actual_dig_out_bits_.size());
   io_pub_->msg_.analog_in_states.resize(standard_analog_input_.size());
@@ -516,7 +516,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
 
     extractRobotStatus();
 
-    publishIOData();
+    publishIOData(time);
     publishToolData();
 
     // Transform fts measurements to tool frame
@@ -911,6 +911,7 @@ void HardwareInterface::publishIOData()
   {
     if (io_pub_->trylock())
     {
+      io_pub_->msg_.header.stamp = timestamp;
       for (size_t i = 0; i < actual_dig_in_bits_.size(); ++i)
       {
         io_pub_->msg_.digital_in_states[i].state = actual_dig_in_bits_[i];
