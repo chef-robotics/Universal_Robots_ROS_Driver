@@ -178,10 +178,14 @@ bool TCPSocket::read(uint8_t* buf, const size_t buf_len, size_t& read)
   if (res == 0)
   {
     state_ = SocketState::Disconnected;
+    LOG_ERROR("Received TCPSocket res=0");
     return false;
   }
   else if (res < 0)
+  {
+    LOG_ERROR("Received TCPSocket res=%d", res);
     return false;
+  }
 
   read = static_cast<size_t>(res);
   return true;

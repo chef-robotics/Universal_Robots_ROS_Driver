@@ -218,6 +218,7 @@ void UrDriver::startWatchdog()
 
       if (keepalive == std::string(""))
       {
+        LOG_INFO("Received empty keepalive, marking reverse interface as inactive");
         reverse_interface_active_ = false;
       }
     }
@@ -229,7 +230,9 @@ void UrDriver::startWatchdog()
     // when trying to bind the socket.
     // TODO: It would probably make sense to keep the same instance alive for the complete runtime
     // instead of killing it all the time.
+    LOG_INFO("Destroying existing reverse interface connection");
     reverse_interface_->~ReverseInterface();
+    LOG_INFO("Creating new reverse interface connection");
     reverse_interface_.reset(new comm::ReverseInterface(reverse_port_));
     reverse_interface_active_ = true;
   }
