@@ -40,7 +40,7 @@
 #include "tf2_msgs/TFMessage.h"
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-#include <ur_msgs/IOStates.h>
+#include <ur_extra_msgs/IOStatesStamped.h>
 #include <ur_msgs/ToolDataMsg.h>
 #include <ur_msgs/SetIO.h>
 #include "ur_msgs/SetSpeedSliderFraction.h"
@@ -189,7 +189,7 @@ protected:
    */
   void publishPose();
 
-  void publishIOData();
+  void publishIOData(const ros::Time& timestamp);
   void publishToolData();
   void publishRobotAndSafetyMode();
   void publishJointTemperatures(const ros::Time& timestamp);
@@ -288,7 +288,7 @@ protected:
   int32_t time_scale_source_;
 
   std::unique_ptr<realtime_tools::RealtimePublisher<tf2_msgs::TFMessage>> tcp_pose_pub_;
-  std::unique_ptr<realtime_tools::RealtimePublisher<ur_msgs::IOStates>> io_pub_;
+  std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::IOStatesStamped>> io_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_msgs::ToolDataMsg>> tool_data_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_dashboard_msgs::RobotMode>> robot_mode_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_dashboard_msgs::SafetyMode>> safety_mode_pub_;

@@ -13,7 +13,7 @@ NAME = 'io_test'
 
 
 from ur_msgs.srv import SetIO, SetIORequest
-from ur_msgs.msg import IOStates
+from ur_extra_msgs.msg import IOStatesStamped
 
 
 class IOTest(unittest.TestCase):
@@ -45,7 +45,7 @@ class IOTest(unittest.TestCase):
         while(pin_state):
             if messages >= maximum_messages:
                 self.fail("Could not read desired state after {} messages.".format(maximum_messages))
-            io_state = rospy.wait_for_message('/ur_hardware_interface/io_states', IOStates)
+            io_state = rospy.wait_for_message('/ur_hardware_interface/io_states', IOStatesStamped)
             pin_state = io_state.digital_out_states[pin].state
             messages += 1
         self.assertEqual(pin_state, 0)
@@ -57,7 +57,7 @@ class IOTest(unittest.TestCase):
         while(not pin_state):
             if messages >= maximum_messages:
                 self.fail("Could not read desired state after {} messages.".format(maximum_messages))
-            io_state = rospy.wait_for_message('/ur_hardware_interface/io_states', IOStates)
+            io_state = rospy.wait_for_message('/ur_hardware_interface/io_states', IOStatesStamped)
             pin_state = io_state.digital_out_states[pin].state
             messages += 1
         self.assertEqual(pin_state, 1)
