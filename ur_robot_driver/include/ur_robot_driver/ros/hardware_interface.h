@@ -32,6 +32,7 @@
 #include <hardware_interface/joint_command_interface.h>
 #include <hardware_interface/joint_state_interface.h>
 #include <algorithm>
+#include <mutex>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float64.h>
 #include <std_msgs/String.h>
@@ -48,6 +49,7 @@
 #include <ur_extra_msgs/JointTemperatures.h>
 #include <ur_extra_msgs/ProtectiveStopRatios.h>
 #include <ur_extra_msgs/JointStateExtended.h>
+#include <ur_extra_msgs/GraspComplianceWindow.h>
 
 #include <ur_controllers/speed_scaling_interface.h>
 #include <ur_controllers/scaled_joint_command_interface.h>
@@ -216,6 +218,8 @@ protected:
   bool resendRobotProgram(std_srvs::TriggerRequest& req, std_srvs::TriggerResponse& res);
   bool zeroFTSensor(std_srvs::TriggerRequest& req, std_srvs::TriggerResponse& res);
   void commandCallback(const std_msgs::StringConstPtr& msg);
+  void graspComplianceWindowCallback(const ur_extra_msgs::GraspComplianceWindowConstPtr& msg);
+  bool isGraspComplianceActive(const ros::Time& time);
 
   std::unique_ptr<UrDriver> ur_driver_;
   std::unique_ptr<DashboardClientROS> dashboard_client_;
@@ -300,6 +304,12 @@ protected:
   ros::ServiceServer set_io_srv_;
   ros::ServiceServer resend_robot_program_srv_;
   ros::Subscriber command_sub_;
+  ros::Subscriber grasp_compliance_window_sub_;
+
+  std::mutex grasp_compliance_window_mutex_;
+  ros::Time grasp_compliance_begin_;
+  ros::Time grasp_compliance_end_;
+  ros::Duration grasp_compliance_max_duration_;
 
   industrial_robot_status_interface::RobotStatus robot_status_resource_{};
   industrial_robot_status_interface::IndustrialRobotStatusInterface robot_status_interface_{};

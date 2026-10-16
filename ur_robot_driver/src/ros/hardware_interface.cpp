@@ -284,6 +284,12 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
   // end
   command_sub_ = robot_hw_nh.subscribe("script_command", 1, &HardwareInterface::commandCallback, this);
 
+  // Grasp windows are published ahead of time so the mode switch lands on the
+  // right control cycle regardless of topic latency.
+  grasp_compliance_max_duration_ = ros::Duration(robot_hw_nh.param<double>("grasp_compliance_max_duration", 0.6));
+  grasp_compliance_window_sub_ = robot_hw_nh.subscribe(
+      "grasp_compliance_window", 1, &HardwareInterface::graspComplianceWindowCallback, this);
+
   // Names of the joints. Usually, this is given in the controller config file.
   if (!robot_hw_nh.getParam("joints", joint_names_))
   {
@@ -590,7 +596,9 @@ void HardwareInterface::write(const ros::Time& time, const ros::Duration& period
   {
     if (position_controller_running_)
     {
-      ur_driver_->writeJointCommand(joint_position_command_, comm::ControlMode::MODE_SERVOJ);
+      const comm::ControlMode mode = isGraspComplianceActive(time) ? comm::ControlMode::MODE_SERVOJ_COMPLIANT :
+                                                                     comm::ControlMode::MODE_SERVOJ;
+      ur_driver_->writeJointCommand(joint_position_command_, mode);
     }
     else if (velocity_controller_running_)
     {
@@ -1049,6 +1057,26 @@ end
 )");
   }
   return true;
+}
+
+void HardwareInterface::graspComplianceWindowCallback(const ur_extra_msgs::GraspComplianceWindowConstPtr& msg)
+{
+  if (msg->end <= msg->begin)
+  {
+    ROS_WARN_STREAM("Ignoring grasp compliance window with end " << msg->end << " <= begin " << msg->begin);
+    return;
+  }
+  // The window is capped so a malformed or stale message cannot leave compliance on.
+  const ros::Time end = std::min(msg->end, msg->begin + grasp_compliance_max_duration_);
+  std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
+  grasp_compliance_begin_ = msg->begin;
+  grasp_compliance_end_ = end;
+}
+
+bool HardwareInterface::isGraspComplianceActive(const ros::Time& time)
+{
+  std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
+  return grasp_compliance_begin_ <= time && time < grasp_compliance_end_;
 }
 
 void HardwareInterface::commandCallback(const std_msgs::StringConstPtr& msg)
