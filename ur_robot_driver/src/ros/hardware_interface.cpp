@@ -1066,6 +1066,14 @@ void HardwareInterface::graspComplianceWindowCallback(const ur_extra_msgs::Grasp
     ROS_WARN_STREAM("Ignoring grasp compliance window with end " << msg->end << " <= begin " << msg->begin);
     return;
   }
+  // Below 5.23 the robot runs the script without compliant mode, where an
+  // unknown mode ends the servo thread with stopj.
+  const VersionInformation& version = ur_driver_->getVersion();
+  if (version.major < 5 || (version.major == 5 && version.minor < 23))
+  {
+    ROS_WARN_STREAM_THROTTLE(10, "Ignoring grasp compliance window; robot software " << version << " < 5.23");
+    return;
+  }
   // The window is capped so a malformed or stale message cannot leave compliance on.
   const ros::Time end = std::min(msg->end, msg->begin + grasp_compliance_max_duration_);
   std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
