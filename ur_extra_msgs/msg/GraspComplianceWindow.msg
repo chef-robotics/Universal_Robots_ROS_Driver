@@ -1,5 +1,6 @@
-# Time window in which the driver streams setpoints in compliant servo mode
-# (MODE_SERVOJ_COMPLIANT) instead of plain servoj. Outside it, or once a newer
-# window replaces it, the driver sends plain servoj.
+# Time window in which grasp compliance is armed. While armed, the driver
+# streams plain servoj until UR's joint position deviation ratio reaches the
+# trigger, then compliant servo mode (MODE_SERVOJ_COMPLIANT) until the window
+# ends. A newer window replaces the current one.
 time begin
 time end

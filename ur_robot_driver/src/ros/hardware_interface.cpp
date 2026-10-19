@@ -286,7 +286,11 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
 
   // Grasp windows are published ahead of time so the mode switch lands on the
   // right control cycle regardless of topic latency.
-  grasp_compliance_max_duration_ = ros::Duration(robot_hw_nh.param<double>("grasp_compliance_max_duration", 0.6));
+  grasp_compliance_max_duration_ = ros::Duration(robot_hw_nh.param<double>("grasp_compliance_max_duration", 1.0));
+  // 0.5 separated all sampled C153A3 stops from normal grasps with >= 38 ms
+  // to spare before the stop (bumblebee and bhakti bags, 2026-10).
+  grasp_compliance_trigger_ratio_ = robot_hw_nh.param<double>("grasp_compliance_trigger_ratio", 0.5);
+  is_grasp_compliance_triggered_ = false;
   grasp_compliance_window_sub_ = robot_hw_nh.subscribe(
       "grasp_compliance_window", 1, &HardwareInterface::graspComplianceWindowCallback, this);
 
@@ -596,7 +600,7 @@ void HardwareInterface::write(const ros::Time& time, const ros::Duration& period
   {
     if (position_controller_running_)
     {
-      const comm::ControlMode mode = isGraspComplianceActive(time) ? comm::ControlMode::MODE_SERVOJ_COMPLIANT :
+      const comm::ControlMode mode = updateGraspCompliance(time) ? comm::ControlMode::MODE_SERVOJ_COMPLIANT :
                                                                      comm::ControlMode::MODE_SERVOJ;
       ur_driver_->writeJointCommand(joint_position_command_, mode);
     }
@@ -1079,12 +1083,23 @@ void HardwareInterface::graspComplianceWindowCallback(const ur_extra_msgs::Grasp
   std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
   grasp_compliance_begin_ = msg->begin;
   grasp_compliance_end_ = end;
+  is_grasp_compliance_triggered_ = false;
 }
 
-bool HardwareInterface::isGraspComplianceActive(const ros::Time& time)
+bool HardwareInterface::updateGraspCompliance(const ros::Time& time)
 {
   std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
-  return grasp_compliance_begin_ <= time && time < grasp_compliance_end_;
+  if (time < grasp_compliance_begin_ || time >= grasp_compliance_end_)
+  {
+    return false;
+  }
+  // Once triggered, compliance holds until the window ends; switching back
+  // as the ratio falls would re-stiffen the arm against the same push.
+  if (!is_grasp_compliance_triggered_ && joint_position_deviation_ratio_ >= grasp_compliance_trigger_ratio_)
+  {
+    is_grasp_compliance_triggered_ = true;
+  }
+  return is_grasp_compliance_triggered_;
 }
 
 void HardwareInterface::commandCallback(const std_msgs::StringConstPtr& msg)

@@ -219,7 +219,7 @@ protected:
   bool zeroFTSensor(std_srvs::TriggerRequest& req, std_srvs::TriggerResponse& res);
   void commandCallback(const std_msgs::StringConstPtr& msg);
   void graspComplianceWindowCallback(const ur_extra_msgs::GraspComplianceWindowConstPtr& msg);
-  bool isGraspComplianceActive(const ros::Time& time);
+  bool updateGraspCompliance(const ros::Time& time);
 
   std::unique_ptr<UrDriver> ur_driver_;
   std::unique_ptr<DashboardClientROS> dashboard_client_;
@@ -310,6 +310,8 @@ protected:
   ros::Time grasp_compliance_begin_;
   ros::Time grasp_compliance_end_;
   ros::Duration grasp_compliance_max_duration_;
+  double grasp_compliance_trigger_ratio_;
+  bool is_grasp_compliance_triggered_;
 
   industrial_robot_status_interface::RobotStatus robot_status_resource_{};
   industrial_robot_status_interface::IndustrialRobotStatusInterface robot_status_interface_{};
