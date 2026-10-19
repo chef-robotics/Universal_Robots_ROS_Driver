@@ -49,6 +49,7 @@
 #include <ur_extra_msgs/JointTemperatures.h>
 #include <ur_extra_msgs/ProtectiveStopRatios.h>
 #include <ur_extra_msgs/JointStateExtended.h>
+#include <ur_extra_msgs/GraspComplianceSummary.h>
 #include <ur_extra_msgs/GraspComplianceWindow.h>
 
 #include <ur_controllers/speed_scaling_interface.h>
@@ -220,6 +221,7 @@ protected:
   void commandCallback(const std_msgs::StringConstPtr& msg);
   void graspComplianceWindowCallback(const ur_extra_msgs::GraspComplianceWindowConstPtr& msg);
   bool updateGraspCompliance(const ros::Time& time);
+  void updateGraspComplianceSummary(const ros::Time& time);
 
   std::unique_ptr<UrDriver> ur_driver_;
   std::unique_ptr<DashboardClientROS> dashboard_client_;
@@ -312,6 +314,12 @@ protected:
   ros::Duration grasp_compliance_max_duration_;
   double grasp_compliance_trigger_ratio_;
   bool is_grasp_compliance_triggered_;
+  bool is_grasp_compliance_summary_pending_;
+  ur_extra_msgs::GraspComplianceSummary grasp_compliance_summary_;
+  std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::GraspComplianceSummary>>
+      grasp_compliance_summary_pub_;
+  int32_t grasp_compliance_status_;
+  std::array<double, 3> grasp_compliance_deflection_;
 
   industrial_robot_status_interface::RobotStatus robot_status_resource_{};
   industrial_robot_status_interface::IndustrialRobotStatusInterface robot_status_interface_{};

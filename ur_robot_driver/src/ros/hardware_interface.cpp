@@ -32,6 +32,7 @@
 #include <ur_msgs/SetPayload.h>
 
 #include <Eigen/Geometry>
+#include <cmath>
 
 using industrial_robot_status_interface::RobotMode;
 using industrial_robot_status_interface::TriState;
@@ -291,6 +292,9 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
   // to spare before the stop (bumblebee and bhakti bags, 2026-10).
   grasp_compliance_trigger_ratio_ = robot_hw_nh.param<double>("grasp_compliance_trigger_ratio", 0.5);
   is_grasp_compliance_triggered_ = false;
+  is_grasp_compliance_summary_pending_ = false;
+  grasp_compliance_summary_pub_.reset(new realtime_tools::RealtimePublisher<ur_extra_msgs::GraspComplianceSummary>(
+      robot_hw_nh, "grasp_compliance_summary", 1));
   grasp_compliance_window_sub_ = robot_hw_nh.subscribe(
       "grasp_compliance_window", 1, &HardwareInterface::graspComplianceWindowCallback, this);
 
@@ -523,6 +527,11 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readData(data_pkg, "collision_detection_ratio", collision_detection_ratio_, false,
              ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO);
     readData(data_pkg, "time_scale_source", time_scale_source_, false, 0);
+    // Written by the compliant robot script; absent from older recipes.
+    readData(data_pkg, "output_int_register_24", grasp_compliance_status_, false, 0);
+    readData(data_pkg, "output_double_register_24", grasp_compliance_deflection_[0], false, 0.0);
+    readData(data_pkg, "output_double_register_25", grasp_compliance_deflection_[1], false, 0.0);
+    readData(data_pkg, "output_double_register_26", grasp_compliance_deflection_[2], false, 0.0);
 
     extractRobotStatus();
 
@@ -536,6 +545,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     publishRobotAndSafetyMode();
     publishJointStateExtended(time);
     publishProtectiveStopRatios(time);
+    updateGraspComplianceSummary(time);
     if (this->enable_temperature_log_) {
       publishJointTemperatures(time);
     }
@@ -1081,9 +1091,19 @@ void HardwareInterface::graspComplianceWindowCallback(const ur_extra_msgs::Grasp
   // The window is capped so a malformed or stale message cannot leave compliance on.
   const ros::Time end = std::min(msg->end, msg->begin + grasp_compliance_max_duration_);
   std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
+  if (is_grasp_compliance_summary_pending_)
+  {
+    ROS_WARN_STREAM("Grasp compliance window ending " << grasp_compliance_end_
+                                                      << " replaced before its summary was published");
+  }
   grasp_compliance_begin_ = msg->begin;
   grasp_compliance_end_ = end;
   is_grasp_compliance_triggered_ = false;
+  grasp_compliance_summary_ = ur_extra_msgs::GraspComplianceSummary();
+  grasp_compliance_summary_.header.stamp = end;
+  grasp_compliance_summary_.window_begin = msg->begin;
+  grasp_compliance_summary_.window_end = end;
+  is_grasp_compliance_summary_pending_ = true;
 }
 
 bool HardwareInterface::updateGraspCompliance(const ros::Time& time)
@@ -1098,8 +1118,50 @@ bool HardwareInterface::updateGraspCompliance(const ros::Time& time)
   if (!is_grasp_compliance_triggered_ && joint_position_deviation_ratio_ >= grasp_compliance_trigger_ratio_)
   {
     is_grasp_compliance_triggered_ = true;
+    grasp_compliance_summary_.is_triggered = true;
+    grasp_compliance_summary_.trigger_time = time;
   }
   return is_grasp_compliance_triggered_;
+}
+
+void HardwareInterface::updateGraspComplianceSummary(const ros::Time& time)
+{
+  // Status values written by the compliant robot script.
+  static constexpr int32_t STATUS_COMPLIANT = 1;
+  std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
+  if (!is_grasp_compliance_summary_pending_ || time < grasp_compliance_begin_)
+  {
+    return;
+  }
+  ur_extra_msgs::GraspComplianceSummary& summary = grasp_compliance_summary_;
+  if (time < grasp_compliance_end_)
+  {
+    summary.max_joint_position_deviation_ratio =
+        std::max(summary.max_joint_position_deviation_ratio, joint_position_deviation_ratio_);
+    summary.max_force = std::max(summary.max_force, std::sqrt(fts_measurements_[0] * fts_measurements_[0] +
+                                                               fts_measurements_[1] * fts_measurements_[1] +
+                                                               fts_measurements_[2] * fts_measurements_[2]));
+    if (grasp_compliance_status_ == STATUS_COMPLIANT)
+    {
+      summary.was_compliant = true;
+      summary.max_deflection_z = std::max(summary.max_deflection_z, grasp_compliance_deflection_[2]);
+      summary.max_deflection_xy = std::max(
+          summary.max_deflection_xy, std::hypot(grasp_compliance_deflection_[0], grasp_compliance_deflection_[1]));
+      summary.exit_deflection_z = grasp_compliance_deflection_[2];
+    }
+    else if (grasp_compliance_status_ > STATUS_COMPLIANT &&
+             summary.guard == ur_extra_msgs::GraspComplianceSummary::GUARD_NONE)
+    {
+      summary.guard = grasp_compliance_status_;
+    }
+    return;
+  }
+  if (grasp_compliance_summary_pub_->trylock())
+  {
+    grasp_compliance_summary_pub_->msg_ = summary;
+    grasp_compliance_summary_pub_->unlockAndPublish();
+    is_grasp_compliance_summary_pending_ = false;
+  }
 }
 
 void HardwareInterface::commandCallback(const std_msgs::StringConstPtr& msg)
