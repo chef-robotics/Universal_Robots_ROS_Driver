@@ -284,6 +284,16 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
   // end
   command_sub_ = robot_hw_nh.subscribe("script_command", 1, &HardwareInterface::commandCallback, this);
 
+  // Grasp windows are published ahead of time so the mode switch lands on the
+  // right control cycle regardless of topic latency.
+  grasp_compliance_max_duration_ = ros::Duration(robot_hw_nh.param<double>("grasp_compliance_max_duration", 1.0));
+  // 0.5 separated all sampled C153A3 stops from normal grasps with >= 38 ms
+  // to spare before the stop (bumblebee and bhakti bags, 2026-10).
+  grasp_compliance_trigger_ratio_ = robot_hw_nh.param<double>("grasp_compliance_trigger_ratio", 0.5);
+  is_grasp_compliance_triggered_ = false;
+  grasp_compliance_window_sub_ = robot_hw_nh.subscribe(
+      "grasp_compliance_window", 1, &HardwareInterface::graspComplianceWindowCallback, this);
+
   // Names of the joints. Usually, this is given in the controller config file.
   if (!robot_hw_nh.getParam("joints", joint_names_))
   {
@@ -590,7 +600,9 @@ void HardwareInterface::write(const ros::Time& time, const ros::Duration& period
   {
     if (position_controller_running_)
     {
-      ur_driver_->writeJointCommand(joint_position_command_, comm::ControlMode::MODE_SERVOJ);
+      const comm::ControlMode mode = updateGraspCompliance(time) ? comm::ControlMode::MODE_SERVOJ_COMPLIANT :
+                                                                     comm::ControlMode::MODE_SERVOJ;
+      ur_driver_->writeJointCommand(joint_position_command_, mode);
     }
     else if (velocity_controller_running_)
     {
@@ -1049,6 +1061,45 @@ end
 )");
   }
   return true;
+}
+
+void HardwareInterface::graspComplianceWindowCallback(const ur_extra_msgs::GraspComplianceWindowConstPtr& msg)
+{
+  if (msg->end <= msg->begin)
+  {
+    ROS_WARN_STREAM("Ignoring grasp compliance window with end " << msg->end << " <= begin " << msg->begin);
+    return;
+  }
+  // Below 5.23 the robot runs the script without compliant mode, where an
+  // unknown mode ends the servo thread with stopj.
+  const VersionInformation& version = ur_driver_->getVersion();
+  if (version.major < 5 || (version.major == 5 && version.minor < 23))
+  {
+    ROS_WARN_STREAM_THROTTLE(10, "Ignoring grasp compliance window; robot software " << version << " < 5.23");
+    return;
+  }
+  // The window is capped so a malformed or stale message cannot leave compliance on.
+  const ros::Time end = std::min(msg->end, msg->begin + grasp_compliance_max_duration_);
+  std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
+  grasp_compliance_begin_ = msg->begin;
+  grasp_compliance_end_ = end;
+  is_grasp_compliance_triggered_ = false;
+}
+
+bool HardwareInterface::updateGraspCompliance(const ros::Time& time)
+{
+  std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
+  if (time < grasp_compliance_begin_ || time >= grasp_compliance_end_)
+  {
+    return false;
+  }
+  // Once triggered, compliance holds until the window ends; switching back
+  // as the ratio falls would re-stiffen the arm against the same push.
+  if (!is_grasp_compliance_triggered_ && joint_position_deviation_ratio_ >= grasp_compliance_trigger_ratio_)
+  {
+    is_grasp_compliance_triggered_ = true;
+  }
+  return is_grasp_compliance_triggered_;
 }
 
 void HardwareInterface::commandCallback(const std_msgs::StringConstPtr& msg)
