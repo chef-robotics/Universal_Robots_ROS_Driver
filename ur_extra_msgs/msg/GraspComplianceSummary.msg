@@ -1,7 +1,8 @@
 # Outcome of one armed grasp compliance window (GraspComplianceWindow),
-# published once the window ends.
+# published once the window has ended and the robot script is no longer
+# compliant (it releases once the arm is back on the plan).
 
-# Stamped with the window end.
+# Stamped when published.
 Header header
 time window_begin
 time window_end
@@ -15,6 +16,8 @@ uint8 GUARD_RELATIVE_SPEED=5
 uint8 GUARD_JOINT_SPEED=6
 uint8 GUARD_DURATION=7
 uint8 GUARD_EXTRAPOLATION=8
+# The arm did not get back on the plan within the release timeout.
+uint8 GUARD_RELEASE_TIMEOUT=9
 
 # Whether the deviation ratio reached the trigger, so the driver sent
 # compliant mode, and when.
@@ -24,6 +27,10 @@ time trigger_time
 bool was_compliant
 # First guard the robot script reported tripping.
 uint8 guard
+# Whether compliance ended by releasing once the arm was back on the plan,
+# and when it ended (zero if it never ran).
+bool was_released
+time compliance_end
 
 float64 max_joint_position_deviation_ratio
 # Peak TCP force magnitude, N.

@@ -1128,20 +1128,41 @@ void HardwareInterface::updateGraspComplianceSummary(const ros::Time& time)
 {
   // Status values written by the compliant robot script.
   static constexpr int32_t STATUS_COMPLIANT = 1;
+  static constexpr int32_t STATUS_RELEASED = 10;
+  // The script stays compliant after the window until the arm is back on the
+  // plan; it gives up after 1 s, so this only bounds a stuck status.
+  static const ros::Duration MAX_RELEASE_DURATION(2.0);
   std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
   if (!is_grasp_compliance_summary_pending_ || time < grasp_compliance_begin_)
   {
     return;
   }
   ur_extra_msgs::GraspComplianceSummary& summary = grasp_compliance_summary_;
-  if (time < grasp_compliance_end_)
+  const bool is_compliant = grasp_compliance_status_ == STATUS_COMPLIANT;
+  const auto record_outcome = [&]() {
+    if (is_compliant)
+    {
+      return;
+    }
+    if (summary.was_compliant && summary.compliance_end.isZero())
+    {
+      summary.compliance_end = time;
+      summary.was_released = grasp_compliance_status_ == STATUS_RELEASED;
+    }
+    if (grasp_compliance_status_ > STATUS_COMPLIANT && grasp_compliance_status_ != STATUS_RELEASED &&
+        summary.guard == ur_extra_msgs::GraspComplianceSummary::GUARD_NONE)
+    {
+      summary.guard = grasp_compliance_status_;
+    }
+  };
+  if (time < grasp_compliance_end_ || (is_compliant && time < grasp_compliance_end_ + MAX_RELEASE_DURATION))
   {
     summary.max_joint_position_deviation_ratio =
         std::max(summary.max_joint_position_deviation_ratio, joint_position_deviation_ratio_);
     summary.max_force = std::max(summary.max_force, std::sqrt(fts_measurements_[0] * fts_measurements_[0] +
                                                                fts_measurements_[1] * fts_measurements_[1] +
                                                                fts_measurements_[2] * fts_measurements_[2]));
-    if (grasp_compliance_status_ == STATUS_COMPLIANT)
+    if (is_compliant)
     {
       summary.was_compliant = true;
       summary.max_deflection_z = std::max(summary.max_deflection_z, grasp_compliance_deflection_[2]);
@@ -1149,15 +1170,13 @@ void HardwareInterface::updateGraspComplianceSummary(const ros::Time& time)
           summary.max_deflection_xy, std::hypot(grasp_compliance_deflection_[0], grasp_compliance_deflection_[1]));
       summary.exit_deflection_z = grasp_compliance_deflection_[2];
     }
-    else if (grasp_compliance_status_ > STATUS_COMPLIANT &&
-             summary.guard == ur_extra_msgs::GraspComplianceSummary::GUARD_NONE)
-    {
-      summary.guard = grasp_compliance_status_;
-    }
+    record_outcome();
     return;
   }
+  record_outcome();
   if (grasp_compliance_summary_pub_->trylock())
   {
+    summary.header.stamp = time;
     grasp_compliance_summary_pub_->msg_ = summary;
     grasp_compliance_summary_pub_->unlockAndPublish();
     is_grasp_compliance_summary_pending_ = false;
