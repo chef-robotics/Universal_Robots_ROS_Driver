@@ -4,3 +4,6 @@
 # ends. A newer window replaces the current one.
 time begin
 time end
+# If nonzero, switch to compliant mode at this time even if the deviation
+# ratio has not reached the trigger (e.g. just before the gripper closes).
+time switch_time
