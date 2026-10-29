@@ -1083,6 +1083,7 @@ void HardwareInterface::graspComplianceWindowCallback(const ur_extra_msgs::Grasp
   std::lock_guard<std::mutex> lock(grasp_compliance_window_mutex_);
   grasp_compliance_begin_ = msg->begin;
   grasp_compliance_end_ = end;
+  grasp_compliance_switch_time_ = msg->switch_time;
   is_grasp_compliance_triggered_ = false;
 }
 
@@ -1095,7 +1096,10 @@ bool HardwareInterface::updateGraspCompliance(const ros::Time& time)
   }
   // Once triggered, compliance holds until the window ends; switching back
   // as the ratio falls would re-stiffen the arm against the same push.
-  if (!is_grasp_compliance_triggered_ && joint_position_deviation_ratio_ >= grasp_compliance_trigger_ratio_)
+  const bool is_switch_time =
+      !grasp_compliance_switch_time_.isZero() && time >= grasp_compliance_switch_time_;
+  if (!is_grasp_compliance_triggered_ &&
+      (is_switch_time || joint_position_deviation_ratio_ >= grasp_compliance_trigger_ratio_))
   {
     is_grasp_compliance_triggered_ = true;
   }

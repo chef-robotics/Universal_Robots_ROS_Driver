@@ -309,6 +309,7 @@ protected:
   std::mutex grasp_compliance_window_mutex_;
   ros::Time grasp_compliance_begin_;
   ros::Time grasp_compliance_end_;
+  ros::Time grasp_compliance_switch_time_;
   ros::Duration grasp_compliance_max_duration_;
   double grasp_compliance_trigger_ratio_;
   bool is_grasp_compliance_triggered_;
