@@ -25,19 +25,13 @@ time compliance_begin
 time compliance_end
 
 # How compliance ended; only meaningful when `was_compliant`.
-# Values the robot script reports match its end-reason register.
-uint8 END_WINDOW=0                     # The window ended (after the unload).
-uint8 END_RELEASE=1                    # Lift release: back on the plan early.
-uint8 END_CANCELLED=2                  # The schedule was replaced or cleared mid-window.
-uint8 END_GUARD_DEFLECTION_Z=3
-uint8 END_GUARD_DEFLECTION_XY=4
-uint8 END_GUARD_DEFLECTION_ROTATION=5
-uint8 END_GUARD_RELATIVE_SPEED=6
-uint8 END_GUARD_JOINT_SPEED=7
-uint8 END_GUARD_EXTRAPOLATION=8
+uint8 END_WINDOW=0        # The window ended.
+uint8 END_CANCELLED=1     # The schedule was replaced or cleared mid-window.
+# The robot script stopped reporting compliant before the window ended.
+uint8 END_EARLY=2
 # The robot script still reported compliant well after the window ended
 # (e.g. a protective stop ended the script).
-uint8 END_NOT_REPORTED=9
+uint8 END_NOT_REPORTED=3
 uint8 end_reason
 
 # Peak TCP force magnitude from the window's begin until the summary [N].

@@ -33,8 +33,6 @@ struct ComplianceScriptStatus
 {
   // A ComplianceScriptState value; any other value counts as not compliant.
   int32_t state = 0;
-  // A ComplianceSummary END_* value, written when compliance ends.
-  int32_t end_reason = 0;
   // Planned minus actual TCP position in the tool frame [m].
   std::array<double, 3> deflection = { { 0.0, 0.0, 0.0 } };
   // TCP force magnitude [N].
@@ -51,9 +49,9 @@ struct ComplianceScriptStatus
 class ComplianceScheduler
 {
 public:
-  // The script stays compliant after a window ends only while it unloads the
-  // spring (0.1 s); a summary still compliant this long after its window's
-  // end closes with END_NOT_REPORTED.
+  // The script leaves compliance within a few cycles of the window's end
+  // (one RTDE round trip); a summary still compliant this long after its
+  // window's end closes with END_NOT_REPORTED.
   static constexpr double k_max_end_report_delay = 0.5;  // [s]
 
   /*!
@@ -112,7 +110,7 @@ private:
  */
 enum class ComplianceSummarySeverity
 {
-  NONE,     ///< Normal outcome: the window or a lift release ended compliance, or it was cancelled before it began.
+  NONE,     ///< Normal outcome: compliance ended with the window, or the window was cancelled before it began.
   WARNING,  ///< Compliance ended early or never ran.
   ERROR,    ///< The robot script refused the profile.
 };

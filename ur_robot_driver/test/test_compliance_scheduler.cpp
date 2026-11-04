@@ -58,11 +58,10 @@ ros::Time at(double seconds_after_stamp)
   return k_stamp + ros::Duration(seconds_after_stamp);
 }
 
-ComplianceScriptStatus makeStatus(ComplianceScriptState state, int32_t end_reason = 0, double deflection_z = 0.0)
+ComplianceScriptStatus makeStatus(ComplianceScriptState state, double deflection_z = 0.0)
 {
   ComplianceScriptStatus status;
   status.state = static_cast<int32_t>(state);
-  status.end_reason = end_reason;
   status.deflection = { { 0.003, 0.004, deflection_z } };
   return status;
 }
@@ -159,22 +158,22 @@ TEST(ComplianceScheduler, rejectsUnrepresentableProfileValues)
   expectRejected(too_large);
 }
 
-TEST(ComplianceScheduler, summarizesWindowEndAfterUnload)
+TEST(ComplianceScheduler, summarizesWindowEnd)
 {
   ComplianceScheduler scheduler;
   scheduler.setSchedule(makeSchedule(), at(0.0));
   const ComplianceScriptStatus servoj = makeStatus(ComplianceScriptState::SERVOJ);
   scheduler.updateSummaries(at(0.5), servoj);
   scheduler.updateSummaries(at(1.0), servoj);
-  ComplianceScriptStatus compliant = makeStatus(ComplianceScriptState::COMPLIANT, 0, 0.030);
+  ComplianceScriptStatus compliant = makeStatus(ComplianceScriptState::COMPLIANT, 0.030);
   compliant.force = 80.0;
   scheduler.updateSummaries(at(1.002), compliant);
   compliant.deflection[2] = 0.010;
   compliant.force = 40.0;
-  // Still unloading after the window end.
+  // The script leaves compliance a few cycles after the window end.
   scheduler.updateSummaries(at(1.55), compliant);
   EXPECT_TRUE(scheduler.popClosedSummaries().empty());
-  scheduler.updateSummaries(at(1.6), makeStatus(ComplianceScriptState::SERVOJ, ComplianceSummary::END_WINDOW));
+  scheduler.updateSummaries(at(1.6), makeStatus(ComplianceScriptState::SERVOJ));
 
   const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
   ASSERT_EQ(summaries.size(), 1u);
@@ -196,44 +195,20 @@ TEST(ComplianceScheduler, summarizesWindowEndAfterUnload)
   EXPECT_TRUE(scheduler.popClosedSummaries().empty());
 }
 
-TEST(ComplianceScheduler, summarizesLiftReleaseInsideWindow)
+TEST(ComplianceScheduler, warnsWhenComplianceEndsEarly)
 {
   ComplianceScheduler scheduler;
   scheduler.setSchedule(makeSchedule(), at(0.0));
   scheduler.updateSummaries(at(1.1), makeStatus(ComplianceScriptState::COMPLIANT));
-  scheduler.updateSummaries(at(1.3), makeStatus(ComplianceScriptState::SERVOJ, ComplianceSummary::END_RELEASE));
+  scheduler.updateSummaries(at(1.3), makeStatus(ComplianceScriptState::SERVOJ));
   const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
   ASSERT_EQ(summaries.size(), 1u);
-  EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_RELEASE);
+  EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_EARLY);
   EXPECT_EQ(summaries[0].compliance_end, at(1.1));
-  EXPECT_EQ(ur_driver::classifyComplianceSummary(summaries[0]), ComplianceSummarySeverity::NONE);
+  EXPECT_EQ(ur_driver::classifyComplianceSummary(summaries[0]), ComplianceSummarySeverity::WARNING);
+  EXPECT_NE(ur_driver::describeComplianceSummary(summaries[0]).find("before the window ended"), std::string::npos);
   // The window itself still runs to its end.
   EXPECT_NE(scheduler.findActiveParameters(at(1.4)), nullptr);
-}
-
-TEST(ComplianceScheduler, warnsOnGuard)
-{
-  ComplianceScheduler scheduler;
-  scheduler.setSchedule(makeSchedule(), at(0.0));
-  scheduler.updateSummaries(at(1.1), makeStatus(ComplianceScriptState::COMPLIANT));
-  scheduler.updateSummaries(
-      at(1.2), makeStatus(ComplianceScriptState::SERVOJ, ComplianceSummary::END_GUARD_DEFLECTION_XY));
-  const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
-  ASSERT_EQ(summaries.size(), 1u);
-  EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_GUARD_DEFLECTION_XY);
-  EXPECT_EQ(ur_driver::classifyComplianceSummary(summaries[0]), ComplianceSummarySeverity::WARNING);
-  EXPECT_NE(ur_driver::describeComplianceSummary(summaries[0]).find("guard deflection_xy"), std::string::npos);
-}
-
-TEST(ComplianceScheduler, unknownEndReasonIsNotReported)
-{
-  ComplianceScheduler scheduler;
-  scheduler.setSchedule(makeSchedule(), at(0.0));
-  scheduler.updateSummaries(at(1.1), makeStatus(ComplianceScriptState::COMPLIANT));
-  scheduler.updateSummaries(at(1.2), makeStatus(ComplianceScriptState::SERVOJ, 42));
-  const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
-  ASSERT_EQ(summaries.size(), 1u);
-  EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_NOT_REPORTED);
 }
 
 TEST(ComplianceScheduler, errorsWhenScriptRefusesProfile)
@@ -318,21 +293,26 @@ TEST(ComplianceScheduler, keepsEndedWindowOpenAcrossReplacement)
   const ComplianceScriptStatus compliant = makeStatus(ComplianceScriptState::COMPLIANT);
   scheduler.updateSummaries(at(1.1), compliant);
   scheduler.updateSummaries(at(1.52), compliant);
-  // A new schedule arrives while the script unloads after the window.
+  // A new schedule arrives before the script has left compliance.
   scheduler.clearSchedule(at(1.53));
   EXPECT_TRUE(scheduler.popClosedSummaries().empty());
-  scheduler.updateSummaries(at(1.6), makeStatus(ComplianceScriptState::SERVOJ, ComplianceSummary::END_WINDOW));
+  scheduler.updateSummaries(at(1.6), makeStatus(ComplianceScriptState::SERVOJ));
   const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
   ASSERT_EQ(summaries.size(), 1u);
   EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_WINDOW);
 }
 
-TEST(ComplianceScheduler, nextWindowSupersedesUnloadingWindow)
+TEST(ComplianceScheduler, backToBackWindowsSwitchProfileWithoutGap)
 {
+  // E.g. a grasp window then a lift window with a stiffer profile.
   ComplianceSchedule schedule = makeSchedule();
-  schedule.windows.push_back(makeWindow(1.5, 2.0));
+  schedule.profiles.push_back(makeProfile(3000.0));
+  schedule.windows.push_back(makeWindow(1.5, 2.0, 1));
   ComplianceScheduler scheduler;
   scheduler.setSchedule(schedule, at(0.0));
+  EXPECT_EQ(scheduler.findActiveParameters(at(1.499))->stiffness[2], 12000.0);
+  EXPECT_EQ(scheduler.findActiveParameters(at(1.5))->stiffness[2], 3000.0);
+
   const ComplianceScriptStatus compliant = makeStatus(ComplianceScriptState::COMPLIANT);
   scheduler.updateSummaries(at(1.4), compliant);
   scheduler.updateSummaries(at(1.5), compliant);
@@ -340,11 +320,12 @@ TEST(ComplianceScheduler, nextWindowSupersedesUnloadingWindow)
   ASSERT_EQ(first.size(), 1u);
   EXPECT_EQ(first[0].window_end, at(1.5));
   EXPECT_EQ(first[0].end_reason, ComplianceSummary::END_WINDOW);
-  scheduler.updateSummaries(at(2.1), makeStatus(ComplianceScriptState::SERVOJ, ComplianceSummary::END_WINDOW));
+  scheduler.updateSummaries(at(2.1), makeStatus(ComplianceScriptState::SERVOJ));
   const std::vector<ComplianceSummary> second = scheduler.popClosedSummaries();
   ASSERT_EQ(second.size(), 1u);
-  EXPECT_EQ(second[0].window_begin, at(1.5));
+  EXPECT_EQ(second[0].profile, 1);
   EXPECT_EQ(second[0].compliance_begin, at(1.5));
+  EXPECT_EQ(second[0].end_reason, ComplianceSummary::END_WINDOW);
 }
 
 TEST(ComplianceScheduler, peakForceCountsBeforeCompliance)

@@ -855,7 +855,7 @@ Whenever the runtime state of the "External Control" program node in the UR-prog
 
 ##### compliance_summary (ur_extra_msgs/ComplianceSummary)
 
-One message per window of `compliance_schedule`, published once compliance for that window has ended: whether it ran (and if not, why), how it ended, and peak force and deflection. Read back from the compliant robot script through RTDE output registers (int 24: state, int 25: end reason, double 24–26: tool-frame deflection). Windows that end early or never run are also logged (warning; error if the robot script refused the profile).
+One message per window of `compliance_schedule`, published once compliance for that window has ended: whether it ran (and if not, why), how it ended, and peak force and deflection. Read back from the compliant robot script through RTDE output registers (int 24: state, double 24–26: tool-frame deflection). Windows that end early or never run are also logged (warning; error if the robot script refused the profile).
 
 #### Subscribed topics
 

@@ -525,7 +525,6 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readData(data_pkg, "time_scale_source", time_scale_source_, false, 0);
     // Written by the compliant robot script; absent from older recipes.
     readData(data_pkg, "output_int_register_24", compliance_script_status_.state, false, 0);
-    readData(data_pkg, "output_int_register_25", compliance_script_status_.end_reason, false, 0);
     readData(data_pkg, "output_double_register_24", compliance_script_status_.deflection[0], false, 0.0);
     readData(data_pkg, "output_double_register_25", compliance_script_status_.deflection[1], false, 0.0);
     readData(data_pkg, "output_double_register_26", compliance_script_status_.deflection[2], false, 0.0);

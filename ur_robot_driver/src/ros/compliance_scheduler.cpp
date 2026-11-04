@@ -40,46 +40,16 @@ comm::ComplianceParameters parametersFromProfile(const ur_extra_msgs::Compliance
   return parameters;
 }
 
-bool isScriptEndReason(int32_t end_reason)
-{
-  switch (end_reason)
-  {
-    case ComplianceSummary::END_WINDOW:
-    case ComplianceSummary::END_RELEASE:
-    case ComplianceSummary::END_GUARD_DEFLECTION_Z:
-    case ComplianceSummary::END_GUARD_DEFLECTION_XY:
-    case ComplianceSummary::END_GUARD_DEFLECTION_ROTATION:
-    case ComplianceSummary::END_GUARD_RELATIVE_SPEED:
-    case ComplianceSummary::END_GUARD_JOINT_SPEED:
-    case ComplianceSummary::END_GUARD_EXTRAPOLATION:
-      return true;
-    default:
-      return false;
-  }
-}
-
 const char* describeEndReason(uint8_t end_reason)
 {
   switch (end_reason)
   {
     case ComplianceSummary::END_WINDOW:
       return "window ended";
-    case ComplianceSummary::END_RELEASE:
-      return "lift release";
     case ComplianceSummary::END_CANCELLED:
       return "cancelled";
-    case ComplianceSummary::END_GUARD_DEFLECTION_Z:
-      return "guard deflection_z";
-    case ComplianceSummary::END_GUARD_DEFLECTION_XY:
-      return "guard deflection_xy";
-    case ComplianceSummary::END_GUARD_DEFLECTION_ROTATION:
-      return "guard deflection_rotation";
-    case ComplianceSummary::END_GUARD_RELATIVE_SPEED:
-      return "guard relative_speed";
-    case ComplianceSummary::END_GUARD_JOINT_SPEED:
-      return "guard joint_speed";
-    case ComplianceSummary::END_GUARD_EXTRAPOLATION:
-      return "guard extrapolation";
+    case ComplianceSummary::END_EARLY:
+      return "robot script stopped being compliant before the window ended";
     case ComplianceSummary::END_NOT_REPORTED:
       return "robot script did not report the end";
     default:
@@ -214,8 +184,9 @@ void ComplianceScheduler::updateSummaries(const ros::Time& time, const Complianc
   }
   if (summary.was_compliant)
   {
-    summary.end_reason = isScriptEndReason(status.end_reason) ? static_cast<uint8_t>(status.end_reason) :
-                                                                 ComplianceSummary::END_NOT_REPORTED;
+    // The script ends compliance only when the window ends.
+    summary.end_reason =
+        time >= summary.window_end ? ComplianceSummary::END_WINDOW : ComplianceSummary::END_EARLY;
     closeFrontSummary(time);
     return;
   }
@@ -286,14 +257,11 @@ ComplianceSummarySeverity classifyComplianceSummary(const ComplianceSummary& sum
         return ComplianceSummarySeverity::WARNING;
     }
   }
-  switch (summary.end_reason)
+  if (summary.end_reason == ComplianceSummary::END_WINDOW)
   {
-    case ComplianceSummary::END_WINDOW:
-    case ComplianceSummary::END_RELEASE:
-      return ComplianceSummarySeverity::NONE;
-    default:
-      return ComplianceSummarySeverity::WARNING;
+    return ComplianceSummarySeverity::NONE;
   }
+  return ComplianceSummarySeverity::WARNING;
 }
 
 std::string describeComplianceSummary(const ComplianceSummary& summary)
