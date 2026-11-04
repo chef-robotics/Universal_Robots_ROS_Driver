@@ -123,10 +123,13 @@ public:
    *
    * \param values Desired joint positions
    * \param control_mode Control mode this command is assigned to.
+   * \param compliance Values of the active compliance profile for
+   * MODE_SERVOJ_COMPLIANT, or null.
    *
    * \returns True on successful write.
    */
-  bool writeJointCommand(const vector6d_t& values, const comm::ControlMode control_mode);
+  bool writeJointCommand(const vector6d_t& values, const comm::ControlMode control_mode,
+                         const comm::ComplianceParameters* compliance = nullptr);
 
   /*!
    * \brief Write a keepalive signal only.

@@ -32,6 +32,9 @@
 #include <ur_msgs/SetPayload.h>
 
 #include <Eigen/Geometry>
+#include <cmath>
+#include <sstream>
+#include <stdexcept>
 
 using industrial_robot_status_interface::RobotMode;
 using industrial_robot_status_interface::TriState;
@@ -284,6 +287,13 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
   // end
   command_sub_ = robot_hw_nh.subscribe("script_command", 1, &HardwareInterface::commandCallback, this);
 
+  compliance_summary_pub_.reset(
+      new realtime_tools::RealtimePublisher<ur_extra_msgs::ComplianceSummary>(robot_hw_nh, "compliance_summary", 1));
+  // Schedules arrive ahead of their windows, so each mode switch lands on the
+  // right control cycle regardless of topic latency.
+  compliance_schedule_sub_ =
+      robot_hw_nh.subscribe("compliance_schedule", 1, &HardwareInterface::complianceScheduleCallback, this);
+
   // Names of the joints. Usually, this is given in the controller config file.
   if (!robot_hw_nh.getParam("joints", joint_names_))
   {
@@ -513,6 +523,15 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readData(data_pkg, "collision_detection_ratio", collision_detection_ratio_, false,
              ur_extra_msgs::ProtectiveStopRatios::UNKNOWN_RATIO);
     readData(data_pkg, "time_scale_source", time_scale_source_, false, 0);
+    // Written by the compliant robot script; absent from older recipes.
+    readData(data_pkg, "output_int_register_24", compliance_script_status_.state, false, 0);
+    readData(data_pkg, "output_int_register_25", compliance_script_status_.end_reason, false, 0);
+    readData(data_pkg, "output_double_register_24", compliance_script_status_.deflection[0], false, 0.0);
+    readData(data_pkg, "output_double_register_25", compliance_script_status_.deflection[1], false, 0.0);
+    readData(data_pkg, "output_double_register_26", compliance_script_status_.deflection[2], false, 0.0);
+    compliance_script_status_.force =
+        std::sqrt(fts_measurements_[0] * fts_measurements_[0] + fts_measurements_[1] * fts_measurements_[1] +
+                  fts_measurements_[2] * fts_measurements_[2]);
 
     extractRobotStatus();
 
@@ -526,6 +545,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     publishRobotAndSafetyMode();
     publishJointStateExtended(time);
     publishProtectiveStopRatios(time);
+    updateCompliance(time);
     if (this->enable_temperature_log_) {
       publishJointTemperatures(time);
     }
@@ -590,7 +610,11 @@ void HardwareInterface::write(const ros::Time& time, const ros::Duration& period
   {
     if (position_controller_running_)
     {
-      ur_driver_->writeJointCommand(joint_position_command_, comm::ControlMode::MODE_SERVOJ);
+      std::lock_guard<std::mutex> lock(compliance_mutex_);
+      const comm::ComplianceParameters* compliance = compliance_scheduler_.findActiveParameters(time);
+      const comm::ControlMode mode =
+          compliance != nullptr ? comm::ControlMode::MODE_SERVOJ_COMPLIANT : comm::ControlMode::MODE_SERVOJ;
+      ur_driver_->writeJointCommand(joint_position_command_, mode, compliance);
     }
     else if (velocity_controller_running_)
     {
@@ -796,6 +820,38 @@ void HardwareInterface::publishProtectiveStopRatios(const ros::Time& timestamp)
       pstop_ratios_pub_->msg_.time_scale_source = time_scale_source_;
       pstop_ratios_pub_->unlockAndPublish();
     }
+  }
+}
+
+void HardwareInterface::updateCompliance(const ros::Time& timestamp)
+{
+  std::vector<ur_extra_msgs::ComplianceSummary> closed;
+  {
+    std::lock_guard<std::mutex> lock(compliance_mutex_);
+    compliance_scheduler_.updateSummaries(timestamp, compliance_script_status_);
+    closed = compliance_scheduler_.popClosedSummaries();
+  }
+  for (const ur_extra_msgs::ComplianceSummary& summary : closed)
+  {
+    switch (classifyComplianceSummary(summary))
+    {
+      case ComplianceSummarySeverity::NONE:
+        break;
+      case ComplianceSummarySeverity::WARNING:
+        ROS_WARN_STREAM(describeComplianceSummary(summary));
+        break;
+      case ComplianceSummarySeverity::ERROR:
+        ROS_ERROR_STREAM(describeComplianceSummary(summary));
+        break;
+    }
+    compliance_summaries_to_publish_.push_back(summary);
+  }
+  // At most one per cycle; the realtime publisher holds one message at a time.
+  if (!compliance_summaries_to_publish_.empty() && compliance_summary_pub_->trylock())
+  {
+    compliance_summary_pub_->msg_ = compliance_summaries_to_publish_.front();
+    compliance_summary_pub_->unlockAndPublish();
+    compliance_summaries_to_publish_.pop_front();
   }
 }
 
@@ -1049,6 +1105,45 @@ end
 )");
   }
   return true;
+}
+
+void HardwareInterface::complianceScheduleCallback(const ur_extra_msgs::ComplianceScheduleConstPtr& msg)
+{
+  const ros::Time time = ros::Time::now();
+  // The compliant robot script needs `direct_torque` (PolyScope >= 5.23).
+  // Planning refuses to enable compliance without that script, so a window
+  // here means a bug upstream.
+  const VersionInformation& version = ur_driver_->getVersion();
+  const bool is_compliance_supported = version.major > 5 || (version.major == 5 && version.minor >= 23);
+  std::string rejection;
+  {
+    std::lock_guard<std::mutex> lock(compliance_mutex_);
+    if (!msg->windows.empty() && !is_compliance_supported)
+    {
+      std::ostringstream message;
+      message << "robot software " << version << " < 5.23";
+      rejection = message.str();
+    }
+    else
+    {
+      try
+      {
+        compliance_scheduler_.setSchedule(*msg, time);
+      }
+      catch (const std::invalid_argument& e)
+      {
+        rejection = e.what();
+      }
+    }
+    if (!rejection.empty())
+    {
+      compliance_scheduler_.clearSchedule(time);
+    }
+  }
+  if (!rejection.empty())
+  {
+    ROS_ERROR_STREAM("Rejected compliance schedule (compliance off): " << rejection);
+  }
 }
 
 void HardwareInterface::commandCallback(const std_msgs::StringConstPtr& msg)
