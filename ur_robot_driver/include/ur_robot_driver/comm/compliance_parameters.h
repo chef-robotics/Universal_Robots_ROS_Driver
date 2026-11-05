@@ -20,14 +20,13 @@ struct ComplianceParameters
   vector6d_t stiffness;  // Tool frame [N/m, N·m/rad].
   vector6d_t damping;    // Tool frame [N·s/m, N·m·s/rad].
   double max_force;      // [N]
-  double max_torque;     // [N·m]
 };
 
-// The reverse interface sends each value as an int32 of value times this.
-// 1e4 covers stiffnesses of tens of thousands of N/m at 1e-4 resolution.
-constexpr int32_t k_compliance_multiplier = 10000;
-// Stiffness, damping, max force, max torque.
-constexpr int k_num_compliance_values = 6 + 6 + 1 + 1;
+// The reverse interface sends each value as an int32 of value times this:
+// 0.01 resolution over +-21 million, beyond any physical profile.
+constexpr int32_t k_compliance_multiplier = 100;
+// Stiffness, damping, max force.
+constexpr int k_num_compliance_values = 6 + 6 + 1;
 
 /*!
  * \brief Whether `value` survives the reverse interface's fixed-point encoding.

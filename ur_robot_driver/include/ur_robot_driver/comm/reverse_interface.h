@@ -151,7 +151,6 @@ public:
         b_pos += appendComplianceValue(b_pos, value);
       }
       b_pos += appendComplianceValue(b_pos, compliance->max_force);
-      b_pos += appendComplianceValue(b_pos, compliance->max_torque);
     }
   }
 

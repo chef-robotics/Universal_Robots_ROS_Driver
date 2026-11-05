@@ -6,6 +6,5 @@
 float64[6] stiffness
 # [N·s/m, N·s/m, N·s/m, N·m·s/rad, N·m·s/rad, N·m·s/rad]
 float64[6] damping
-# Saturation of the spring-damper force and torque.
-float64 max_force   # [N]
-float64 max_torque  # [N·m]
+# Saturation of the spring-damper's linear force.
+float64 max_force  # [N]

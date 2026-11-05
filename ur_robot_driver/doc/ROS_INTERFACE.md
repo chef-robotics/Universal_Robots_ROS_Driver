@@ -865,7 +865,7 @@ Send arbitrary script commands to this topic. Note: On e-Series the robot has to
 
 ##### compliance_schedule (ur_extra_msgs/ComplianceSchedule)
 
-Windows in which the arm is compliant, and the profile (tool-frame stiffness, damping, force and torque caps) of each. A new schedule replaces the previous one; an empty one clears it. While a position controller runs, the driver sends `MODE_SERVOJ_COMPLIANT` with the active window's profile values inside a window, and `MODE_SERVOJ` outside. Requires the compliant robot script (PolyScope >= 5.23). An invalid schedule, or any window below PolyScope 5.23, is rejected with an error and clears the previous schedule.
+Windows in which the arm is compliant, and the profile (tool-frame stiffness, damping, force cap) of each. A new schedule replaces the previous one; an empty one clears it. While a position controller runs, the driver sends `MODE_SERVOJ_COMPLIANT` with the active window's profile values inside a window, and `MODE_SERVOJ` outside. Requires the compliant robot script (PolyScope >= 5.23). An invalid schedule, or any window below PolyScope 5.23, is rejected with an error and clears the previous schedule.
 
 ### dashboard_client
 

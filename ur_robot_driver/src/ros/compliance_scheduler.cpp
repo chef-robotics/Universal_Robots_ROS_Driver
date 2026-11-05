@@ -34,9 +34,7 @@ comm::ComplianceParameters parametersFromProfile(const ur_extra_msgs::Compliance
     parameters.damping[i] = profile.damping[i];
   }
   requireRepresentable(profile.max_force, "max_force", profile_idx);
-  requireRepresentable(profile.max_torque, "max_torque", profile_idx);
   parameters.max_force = profile.max_force;
-  parameters.max_torque = profile.max_torque;
   return parameters;
 }
 
