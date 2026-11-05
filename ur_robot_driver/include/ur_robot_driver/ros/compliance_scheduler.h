@@ -22,7 +22,6 @@ enum class ComplianceScriptState : int32_t
 {
   SERVOJ = 0,
   COMPLIANT = 1,
-  REFUSED = 2,  ///< The script refused the profile values it received.
 };
 
 /*!
@@ -112,7 +111,6 @@ enum class ComplianceSummarySeverity
 {
   NONE,     ///< Normal outcome: compliance ended with the window, or the window was cancelled before it began.
   WARNING,  ///< Compliance ended early or never ran.
-  ERROR,    ///< The robot script refused the profile.
 };
 
 ComplianceSummarySeverity classifyComplianceSummary(const ur_extra_msgs::ComplianceSummary& summary);

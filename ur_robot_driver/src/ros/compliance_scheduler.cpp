@@ -61,8 +61,6 @@ const char* describeNotCompliantReason(uint8_t not_compliant_reason)
 {
   switch (not_compliant_reason)
   {
-    case ComplianceSummary::NOT_COMPLIANT_INVALID:
-      return "robot script refused the profile";
     case ComplianceSummary::NOT_COMPLIANT_CANCELLED:
       return "cancelled before it began";
     case ComplianceSummary::NOT_COMPLIANT_NOT_REPORTED:
@@ -190,12 +188,6 @@ void ComplianceScheduler::updateSummaries(const ros::Time& time, const Complianc
     closeFrontSummary(time);
     return;
   }
-  if (status.state == static_cast<int32_t>(ComplianceScriptState::REFUSED))
-  {
-    summary.not_compliant_reason = ComplianceSummary::NOT_COMPLIANT_INVALID;
-    closeFrontSummary(time);
-    return;
-  }
   if (time >= summary.window_end)
   {
     summary.not_compliant_reason = ComplianceSummary::NOT_COMPLIANT_NOT_REPORTED;
@@ -247,15 +239,9 @@ ComplianceSummarySeverity classifyComplianceSummary(const ComplianceSummary& sum
 {
   if (!summary.was_compliant)
   {
-    switch (summary.not_compliant_reason)
-    {
-      case ComplianceSummary::NOT_COMPLIANT_INVALID:
-        return ComplianceSummarySeverity::ERROR;
-      case ComplianceSummary::NOT_COMPLIANT_CANCELLED:
-        return ComplianceSummarySeverity::NONE;
-      default:
-        return ComplianceSummarySeverity::WARNING;
-    }
+    return summary.not_compliant_reason == ComplianceSummary::NOT_COMPLIANT_CANCELLED ?
+               ComplianceSummarySeverity::NONE :
+               ComplianceSummarySeverity::WARNING;
   }
   if (summary.end_reason == ComplianceSummary::END_WINDOW)
   {

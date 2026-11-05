@@ -211,19 +211,6 @@ TEST(ComplianceScheduler, warnsWhenComplianceEndsEarly)
   EXPECT_NE(scheduler.findActiveParameters(at(1.4)), nullptr);
 }
 
-TEST(ComplianceScheduler, errorsWhenScriptRefusesProfile)
-{
-  ComplianceScheduler scheduler;
-  scheduler.setSchedule(makeSchedule(), at(0.0));
-  scheduler.updateSummaries(at(1.002), makeStatus(ComplianceScriptState::REFUSED));
-  const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
-  ASSERT_EQ(summaries.size(), 1u);
-  EXPECT_FALSE(summaries[0].was_compliant);
-  EXPECT_EQ(summaries[0].not_compliant_reason, ComplianceSummary::NOT_COMPLIANT_INVALID);
-  EXPECT_EQ(ur_driver::classifyComplianceSummary(summaries[0]), ComplianceSummarySeverity::ERROR);
-  EXPECT_NE(ur_driver::describeComplianceSummary(summaries[0]).find("refused the profile"), std::string::npos);
-}
-
 TEST(ComplianceScheduler, warnsWhenScriptNeverReportsCompliant)
 {
   ComplianceScheduler scheduler;

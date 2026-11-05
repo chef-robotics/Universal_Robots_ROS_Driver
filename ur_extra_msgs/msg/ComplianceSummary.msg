@@ -12,13 +12,11 @@ uint8 profile
 bool was_compliant
 # If not, why. NOT_COMPLIANT_NONE when `was_compliant`.
 uint8 NOT_COMPLIANT_NONE=0
-# The robot script refused the profile values.
-uint8 NOT_COMPLIANT_INVALID=1
 # The schedule was replaced or cleared before the window began.
-uint8 NOT_COMPLIANT_CANCELLED=2
+uint8 NOT_COMPLIANT_CANCELLED=1
 # The window passed without the robot script reporting compliant
 # (e.g. the arm controller or the robot program was not running).
-uint8 NOT_COMPLIANT_NOT_REPORTED=3
+uint8 NOT_COMPLIANT_NOT_REPORTED=2
 uint8 not_compliant_reason
 # First and last compliant cycle (zero if never compliant).
 time compliance_begin

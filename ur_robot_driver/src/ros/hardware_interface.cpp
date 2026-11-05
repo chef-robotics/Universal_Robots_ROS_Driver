@@ -839,9 +839,6 @@ void HardwareInterface::updateCompliance(const ros::Time& timestamp)
       case ComplianceSummarySeverity::WARNING:
         ROS_WARN_STREAM(describeComplianceSummary(summary));
         break;
-      case ComplianceSummarySeverity::ERROR:
-        ROS_ERROR_STREAM(describeComplianceSummary(summary));
-        break;
     }
     compliance_summaries_to_publish_.push_back(summary);
   }
