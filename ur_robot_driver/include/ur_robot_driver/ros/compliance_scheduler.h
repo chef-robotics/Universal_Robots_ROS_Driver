@@ -62,8 +62,7 @@ public:
    * cut or dropped at or before `time` has its summary closed as cancelled.
    *
    * \throws std::invalid_argument If `schedule` is invalid (window order,
-   * timing, profile index or values, or windows without a stamp); nothing
-   * changes then.
+   * timing, profile index or values); nothing changes then.
    */
   void setSchedule(const ur_extra_msgs::ComplianceSchedule& schedule, const ros::Time& time);
 

@@ -140,9 +140,6 @@ TEST(ComplianceScheduler, rejectsInvalidWindows)
   missing_profile.windows[0].profile = 1;
   expectRejected(missing_profile);
 
-  ComplianceSchedule unstamped = makeSchedule();
-  unstamped.stamp = ros::Time();
-  expectRejected(unstamped);
 }
 
 TEST(ComplianceScheduler, rejectsUnrepresentableProfileValues)
@@ -349,6 +346,17 @@ TEST(ComplianceScheduler, emptyScheduleStampedZeroClearsOnReceipt)
   EXPECT_EQ(summaries[0].header.stamp, at(1.2));
   EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_CANCELLED);
   EXPECT_EQ(ur_driver::classifyComplianceSummary(summaries[0]), ComplianceSummarySeverity::WARNING);
+}
+
+TEST(ComplianceScheduler, stampZeroWindowsRunFromReceipt)
+{
+  ComplianceSchedule unstamped = makeSchedule();
+  unstamped.stamp = ros::Time();
+  ComplianceScheduler scheduler;
+  scheduler.setSchedule(unstamped, at(0.5));
+  EXPECT_EQ(scheduler.findActiveParameters(at(1.49)), nullptr);
+  EXPECT_NE(scheduler.findActiveParameters(at(1.5)), nullptr);
+  EXPECT_EQ(scheduler.findActiveParameters(at(2.0)), nullptr);
 }
 
 TEST(ComplianceScheduler, pastStampCancelsRunningWindowAndStartsNewOne)

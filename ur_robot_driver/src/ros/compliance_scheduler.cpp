@@ -78,10 +78,8 @@ void ComplianceScheduler::setSchedule(const ComplianceSchedule& schedule, const 
   {
     profiles.push_back(parametersFromProfile(schedule.profiles[i], i));
   }
-  if (!schedule.windows.empty() && schedule.stamp.isZero())
-  {
-    throw std::invalid_argument("windows without a stamp");
-  }
+  // Stamp 0 means on receipt, as for trajectory goals.
+  const ros::Time stamp = schedule.stamp.isZero() ? time : schedule.stamp;
   std::vector<Window> windows;
   for (size_t i = 0; i < schedule.windows.size(); ++i)
   {
@@ -102,10 +100,10 @@ void ComplianceScheduler::setSchedule(const ComplianceSchedule& schedule, const 
       throw std::invalid_argument(where.str() + ": overlaps or precedes the previous window");
     }
     windows.push_back(
-        Window{ schedule.stamp + window.begin, schedule.stamp + window.end, window.profile, profiles.at(window.profile) });
+        Window{ stamp + window.begin, stamp + window.end, window.profile, profiles.at(window.profile) });
   }
 
-  cutWindows(schedule.stamp.isZero() ? time : schedule.stamp, time);
+  cutWindows(stamp, time);
   for (const Window& window : windows)
   {
     windows_.push_back(window);
