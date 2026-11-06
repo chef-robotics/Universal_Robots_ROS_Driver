@@ -54,18 +54,22 @@ public:
   static constexpr double k_max_end_report_delay = 0.5;  // [s]
 
   /*!
-   * \brief Replace the schedule.
+   * \brief Apply `schedule` from its stamp, as a joint trajectory controller
+   * applies a new goal from its start time; a zero stamp means `time`.
    *
-   * Summaries of the previous schedule's windows that have not ended are
-   * closed as cancelled.
+   * Held windows that end by then are kept, one running across it is cut
+   * there, later ones are dropped; then the new windows are added. A window
+   * cut or dropped at or before `time` has its summary closed as cancelled.
    *
    * \throws std::invalid_argument If `schedule` is invalid (window order,
-   * timing, profile index or values); nothing changes then.
+   * timing, profile index or values, or windows without a stamp); nothing
+   * changes then.
    */
   void setSchedule(const ur_extra_msgs::ComplianceSchedule& schedule, const ros::Time& time);
 
   /*!
-   * \brief Clear the schedule, as an empty schedule would.
+   * \brief Clear every window from `time`, as an empty schedule stamped 0
+   * received at `time` would.
    */
   void clearSchedule(const ros::Time& time);
 
@@ -90,14 +94,17 @@ private:
   {
     ros::Time begin;
     ros::Time end;
-    uint8_t profile;
+    uint8_t profile;  // Index into the schedule it came from, for its summary.
+    comm::ComplianceParameters parameters;
   };
 
-  void cancelOpenSummaries(const ros::Time& time);
+  // Keep what ends by `cutoff`, cut what runs across it, drop the rest.
+  void cutWindows(const ros::Time& cutoff, const ros::Time& time);
+  void closeCancelledSummary(ur_extra_msgs::ComplianceSummary& summary, const ros::Time& time);
   // Stamp the front open summary and move it to the closed ones.
   void closeFrontSummary(const ros::Time& time);
 
-  std::vector<comm::ComplianceParameters> profiles_;
+  // Ordered and non-overlapping.
   std::vector<Window> windows_;
   // Ordered by window begin; the front one receives the script's status.
   std::deque<ur_extra_msgs::ComplianceSummary> open_summaries_;

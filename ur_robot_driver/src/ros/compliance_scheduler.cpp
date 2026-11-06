@@ -101,14 +101,14 @@ void ComplianceScheduler::setSchedule(const ComplianceSchedule& schedule, const 
     {
       throw std::invalid_argument(where.str() + ": overlaps or precedes the previous window");
     }
-    windows.push_back(Window{ schedule.stamp + window.begin, schedule.stamp + window.end, window.profile });
+    windows.push_back(
+        Window{ schedule.stamp + window.begin, schedule.stamp + window.end, window.profile, profiles.at(window.profile) });
   }
 
-  cancelOpenSummaries(time);
-  profiles_ = profiles;
-  windows_ = windows;
-  for (const Window& window : windows_)
+  cutWindows(schedule.stamp.isZero() ? time : schedule.stamp, time);
+  for (const Window& window : windows)
   {
+    windows_.push_back(window);
     ComplianceSummary summary;
     summary.window_begin = window.begin;
     summary.window_end = window.end;
@@ -119,9 +119,7 @@ void ComplianceScheduler::setSchedule(const ComplianceSchedule& schedule, const 
 
 void ComplianceScheduler::clearSchedule(const ros::Time& time)
 {
-  cancelOpenSummaries(time);
-  profiles_.clear();
-  windows_.clear();
+  cutWindows(time, time);
 }
 
 const comm::ComplianceParameters* ComplianceScheduler::findActiveParameters(const ros::Time& time) const
@@ -130,7 +128,7 @@ const comm::ComplianceParameters* ComplianceScheduler::findActiveParameters(cons
   {
     if (window.begin <= time && time < window.end)
     {
-      return &profiles_[window.profile];
+      return &window.parameters;
     }
   }
   return nullptr;
@@ -200,30 +198,54 @@ std::vector<ComplianceSummary> ComplianceScheduler::popClosedSummaries()
   return closed;
 }
 
-void ComplianceScheduler::cancelOpenSummaries(const ros::Time& time)
+void ComplianceScheduler::cutWindows(const ros::Time& cutoff, const ros::Time& time)
 {
-  // Windows that have ended keep their summary open until the script reports
-  // how compliance ended (e.g. after the unload).
-  std::deque<ComplianceSummary> kept;
-  for (ComplianceSummary& summary : open_summaries_)
+  std::vector<Window> kept_windows;
+  for (Window window : windows_)
   {
-    if (time >= summary.window_end)
+    if (window.begin >= cutoff)
     {
-      kept.push_back(summary);
       continue;
     }
-    if (summary.was_compliant)
+    window.end = std::min(window.end, cutoff);
+    kept_windows.push_back(window);
+  }
+  windows_.swap(kept_windows);
+
+  // A window cut to end later still ends normally then; one cut at or
+  // before `time` (or dropped) is cancelled now.
+  std::deque<ComplianceSummary> kept_summaries;
+  for (ComplianceSummary& summary : open_summaries_)
+  {
+    if (summary.window_end <= cutoff)
     {
-      summary.end_reason = ComplianceSummary::END_CANCELLED;
+      kept_summaries.push_back(summary);
+    }
+    else if (summary.window_begin < cutoff && cutoff > time)
+    {
+      summary.window_end = cutoff;
+      kept_summaries.push_back(summary);
     }
     else
     {
-      summary.not_compliant_reason = ComplianceSummary::NOT_COMPLIANT_CANCELLED;
+      closeCancelledSummary(summary, time);
     }
-    summary.header.stamp = time;
-    closed_summaries_.push_back(summary);
   }
-  open_summaries_.swap(kept);
+  open_summaries_.swap(kept_summaries);
+}
+
+void ComplianceScheduler::closeCancelledSummary(ComplianceSummary& summary, const ros::Time& time)
+{
+  if (summary.was_compliant)
+  {
+    summary.end_reason = ComplianceSummary::END_CANCELLED;
+  }
+  else
+  {
+    summary.not_compliant_reason = ComplianceSummary::NOT_COMPLIANT_CANCELLED;
+  }
+  summary.header.stamp = time;
+  closed_summaries_.push_back(summary);
 }
 
 void ComplianceScheduler::closeFrontSummary(const ros::Time& time)

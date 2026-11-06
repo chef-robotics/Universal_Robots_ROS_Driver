@@ -287,6 +287,87 @@ TEST(ComplianceScheduler, keepsEndedWindowOpenAcrossReplacement)
   EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_WINDOW);
 }
 
+TEST(ComplianceScheduler, replacementKeepsOldWindowUntilNewStamp)
+{
+  // The old trajectory runs until the new one's stamp, like a joint
+  // trajectory controller's goal replacement.
+  ComplianceScheduler scheduler;
+  scheduler.setSchedule(makeSchedule(), at(0.0));
+  scheduler.updateSummaries(at(1.05), makeStatus(ComplianceScriptState::COMPLIANT));
+  ComplianceSchedule replacement;
+  replacement.stamp = at(1.2);
+  replacement.profiles.push_back(makeProfile(3000.0));
+  replacement.windows.push_back(makeWindow(0.0, 0.3));
+  scheduler.setSchedule(replacement, at(1.1));
+  EXPECT_TRUE(scheduler.popClosedSummaries().empty());
+  EXPECT_EQ(scheduler.findActiveParameters(at(1.15))->stiffness[2], 12000.0);
+  EXPECT_EQ(scheduler.findActiveParameters(at(1.2))->stiffness[2], 3000.0);
+  EXPECT_EQ(scheduler.findActiveParameters(at(1.5)), nullptr);
+
+  const ComplianceScriptStatus compliant = makeStatus(ComplianceScriptState::COMPLIANT);
+  scheduler.updateSummaries(at(1.15), compliant);
+  scheduler.updateSummaries(at(1.2), compliant);
+  const std::vector<ComplianceSummary> old_window = scheduler.popClosedSummaries();
+  ASSERT_EQ(old_window.size(), 1u);
+  EXPECT_EQ(old_window[0].window_end, at(1.2));
+  EXPECT_EQ(old_window[0].end_reason, ComplianceSummary::END_WINDOW);
+  scheduler.updateSummaries(at(1.52), makeStatus(ComplianceScriptState::SERVOJ));
+  const std::vector<ComplianceSummary> new_window = scheduler.popClosedSummaries();
+  ASSERT_EQ(new_window.size(), 1u);
+  EXPECT_EQ(new_window[0].window_begin, at(1.2));
+  EXPECT_EQ(new_window[0].compliance_begin, at(1.2));
+  EXPECT_EQ(new_window[0].end_reason, ComplianceSummary::END_WINDOW);
+}
+
+TEST(ComplianceScheduler, emptyScheduleClearsFromItsStamp)
+{
+  ComplianceScheduler scheduler;
+  scheduler.setSchedule(makeSchedule(), at(0.0));
+  scheduler.updateSummaries(at(1.05), makeStatus(ComplianceScriptState::COMPLIANT));
+  ComplianceSchedule clear_later;
+  clear_later.stamp = at(1.3);
+  scheduler.setSchedule(clear_later, at(1.1));
+  EXPECT_NE(scheduler.findActiveParameters(at(1.29)), nullptr);
+  EXPECT_EQ(scheduler.findActiveParameters(at(1.3)), nullptr);
+  EXPECT_TRUE(scheduler.popClosedSummaries().empty());
+  scheduler.updateSummaries(at(1.32), makeStatus(ComplianceScriptState::SERVOJ));
+  const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
+  ASSERT_EQ(summaries.size(), 1u);
+  EXPECT_EQ(summaries[0].window_end, at(1.3));
+  EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_WINDOW);
+}
+
+TEST(ComplianceScheduler, emptyScheduleStampedZeroClearsOnReceipt)
+{
+  ComplianceScheduler scheduler;
+  scheduler.setSchedule(makeSchedule(), at(0.0));
+  scheduler.updateSummaries(at(1.05), makeStatus(ComplianceScriptState::COMPLIANT));
+  scheduler.setSchedule(ComplianceSchedule(), at(1.2));
+  EXPECT_EQ(scheduler.findActiveParameters(at(1.2)), nullptr);
+  const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
+  ASSERT_EQ(summaries.size(), 1u);
+  EXPECT_EQ(summaries[0].header.stamp, at(1.2));
+  EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_CANCELLED);
+  EXPECT_EQ(ur_driver::classifyComplianceSummary(summaries[0]), ComplianceSummarySeverity::WARNING);
+}
+
+TEST(ComplianceScheduler, pastStampCancelsRunningWindowAndStartsNewOne)
+{
+  // A schedule stamped before `time` takes over at once.
+  ComplianceScheduler scheduler;
+  scheduler.setSchedule(makeSchedule(), at(0.0));
+  scheduler.updateSummaries(at(1.05), makeStatus(ComplianceScriptState::COMPLIANT));
+  ComplianceSchedule late;
+  late.stamp = at(0.9);
+  late.profiles.push_back(makeProfile(3000.0));
+  late.windows.push_back(makeWindow(0.0, 0.5));
+  scheduler.setSchedule(late, at(1.1));
+  const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
+  ASSERT_EQ(summaries.size(), 1u);
+  EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_CANCELLED);
+  EXPECT_EQ(scheduler.findActiveParameters(at(1.1))->stiffness[2], 3000.0);
+}
+
 TEST(ComplianceScheduler, backToBackWindowsSwitchProfileWithoutGap)
 {
   // E.g. a grasp window then a lift window with a stiffer profile.
