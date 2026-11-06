@@ -13,9 +13,10 @@ using ur_extra_msgs::ComplianceSummary;
 
 namespace
 {
-void requireRepresentable(double value, const char* name, size_t profile_idx)
+void requireRepresentable(double value, const char* name, size_t profile_idx,
+                          int32_t multiplier = comm::k_compliance_multiplier)
 {
-  if (!comm::isComplianceValueRepresentable(value))
+  if (!comm::isComplianceValueRepresentable(value, multiplier))
   {
     std::ostringstream message;
     message << "profile " << profile_idx << " " << name << " " << value << " is not finite or out of range";
@@ -35,6 +36,20 @@ comm::ComplianceParameters parametersFromProfile(const ur_extra_msgs::Compliance
   }
   requireRepresentable(profile.max_force, "max_force", profile_idx);
   parameters.max_force = profile.max_force;
+  requireRepresentable(profile.handback_max_deflection, "handback_max_deflection", profile_idx,
+                       comm::k_compliance_handback_multiplier);
+  requireRepresentable(profile.handback_max_speed, "handback_max_speed", profile_idx,
+                       comm::k_compliance_handback_multiplier);
+  const bool is_handback_off = profile.handback_max_deflection == 0.0 && profile.handback_max_speed == 0.0;
+  if (!is_handback_off && !(profile.handback_max_deflection > 0.0 && profile.handback_max_speed > 0.0))
+  {
+    std::ostringstream message;
+    message << "profile " << profile_idx << " hand-back limits " << profile.handback_max_deflection << " m, "
+            << profile.handback_max_speed << " m/s must both be 0 or both be positive";
+    throw std::invalid_argument(message.str());
+  }
+  parameters.handback_max_deflection = profile.handback_max_deflection;
+  parameters.handback_max_speed = profile.handback_max_speed;
   return parameters;
 }
 
@@ -50,6 +65,8 @@ const char* describeEndReason(uint8_t end_reason)
       return "robot script stopped being compliant before the window ended";
     case ComplianceSummary::END_NOT_REPORTED:
       return "robot script did not report the end";
+    case ComplianceSummary::END_HANDED_BACK:
+      return "handed back to servoj within the profile's limits";
     default:
       return "unknown end reason";
   }
@@ -176,9 +193,15 @@ void ComplianceScheduler::updateSummaries(const ros::Time& time, const Complianc
   }
   if (summary.was_compliant)
   {
-    // The script ends compliance only when the window ends.
-    summary.end_reason =
-        time >= summary.window_end ? ComplianceSummary::END_WINDOW : ComplianceSummary::END_EARLY;
+    // The script ends compliance early only on a hand-back.
+    if (status.state == static_cast<int32_t>(ComplianceScriptState::HANDED_BACK))
+    {
+      summary.end_reason = ComplianceSummary::END_HANDED_BACK;
+    }
+    else
+    {
+      summary.end_reason = time >= summary.window_end ? ComplianceSummary::END_WINDOW : ComplianceSummary::END_EARLY;
+    }
     closeFrontSummary(time);
     return;
   }
@@ -261,7 +284,7 @@ ComplianceSummarySeverity classifyComplianceSummary(const ComplianceSummary& sum
                ComplianceSummarySeverity::NONE :
                ComplianceSummarySeverity::WARNING;
   }
-  if (summary.end_reason == ComplianceSummary::END_WINDOW)
+  if (summary.end_reason == ComplianceSummary::END_WINDOW || summary.end_reason == ComplianceSummary::END_HANDED_BACK)
   {
     return ComplianceSummarySeverity::NONE;
   }

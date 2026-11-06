@@ -151,6 +151,8 @@ public:
         b_pos += appendComplianceValue(b_pos, value);
       }
       b_pos += appendComplianceValue(b_pos, compliance->max_force);
+      b_pos += appendComplianceValue(b_pos, compliance->handback_max_deflection, k_compliance_handback_multiplier);
+      b_pos += appendComplianceValue(b_pos, compliance->handback_max_speed, k_compliance_handback_multiplier);
     }
   }
 
@@ -180,9 +182,9 @@ private:
   URServer server_;
   static const int32_t MULT_JOINTSTATE = 1000000;
 
-  static size_t appendComplianceValue(uint8_t* buffer, double value)
+  static size_t appendComplianceValue(uint8_t* buffer, double value, int32_t multiplier = k_compliance_multiplier)
   {
-    int32_t val = htobe32(static_cast<int32_t>(std::round(value * k_compliance_multiplier)));
+    int32_t val = htobe32(static_cast<int32_t>(std::round(value * multiplier)));
     return append(buffer, val);
   }
 

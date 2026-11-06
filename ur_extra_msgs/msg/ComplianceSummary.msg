@@ -30,6 +30,8 @@ uint8 END_EARLY=2
 # The robot script still reported compliant well after the window ended
 # (e.g. a protective stop ended the script).
 uint8 END_NOT_REPORTED=3
+# The tool came within the profile's hand-back limits, so servoj took over.
+uint8 END_HANDED_BACK=4
 uint8 end_reason
 
 # Peak TCP force magnitude from the window's begin until the summary [N].

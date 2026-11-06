@@ -8,3 +8,9 @@ float64[6] stiffness
 float64[6] damping
 # Saturation of the spring-damper's linear force.
 float64 max_force  # [N]
+
+# Hand back to servoj on the first cycle the tool is within both limits of
+# the plan; servoj then tracks the plan until compliance ends or the profile
+# changes. Both 0 (the default) never hands back early.
+float64 handback_max_deflection  # Tool-frame linear position error [m].
+float64 handback_max_speed       # Tool-frame linear relative speed [m/s].
