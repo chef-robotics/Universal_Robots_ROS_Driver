@@ -99,12 +99,14 @@ control_mode = MODE_UNINITIALIZED
 thread_move = 0
 global keepalive = -2
 textmsg("ExternalControl: External control active")
-params_mult = socket_read_binary_integer(1+6+1, "reverse_socket")
+# Each packet is keepalive, 6 joint values, control mode and 13 compliance
+# values (unused by this script, which has no compliant mode).
+params_mult = socket_read_binary_integer(1+6+1+13, "reverse_socket")
 keepalive = params_mult[1]
 while keepalive > 0 and control_mode > MODE_STOPPED:
   enter_critical
   socket_send_line(1, "reverse_socket")
-  params_mult = socket_read_binary_integer(1+6+1, "reverse_socket", 0.02) # steptime could work as well, but does not work in simulation
+  params_mult = socket_read_binary_integer(1+6+1+13, "reverse_socket", 0.02) # steptime could work as well, but does not work in simulation
   if params_mult[0] > 0:
     keepalive = params_mult[1]
     if control_mode != params_mult[8]:

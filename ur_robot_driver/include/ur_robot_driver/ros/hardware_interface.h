@@ -32,6 +32,8 @@
 #include <hardware_interface/joint_command_interface.h>
 #include <hardware_interface/joint_state_interface.h>
 #include <algorithm>
+#include <deque>
+#include <mutex>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float64.h>
 #include <std_msgs/String.h>
@@ -48,11 +50,14 @@
 #include <ur_extra_msgs/JointTemperatures.h>
 #include <ur_extra_msgs/ProtectiveStopRatios.h>
 #include <ur_extra_msgs/JointStateExtended.h>
+#include <ur_extra_msgs/ComplianceSchedule.h>
+#include <ur_extra_msgs/ComplianceSummary.h>
 
 #include <ur_controllers/speed_scaling_interface.h>
 #include <ur_controllers/scaled_joint_command_interface.h>
 
 #include "ur_robot_driver/ur/ur_driver.h"
+#include <ur_robot_driver/ros/compliance_scheduler.h>
 #include <ur_robot_driver/ros/dashboard_client_ros.h>
 
 #include <ur_dashboard_msgs/RobotMode.h>
@@ -195,6 +200,8 @@ protected:
   void publishJointTemperatures(const ros::Time& timestamp);
   void publishProtectiveStopRatios(const ros::Time& timestamp);
   void publishJointStateExtended(const ros::Time& timestamp);
+  // Account the script's compliance status, then log and publish closed summaries.
+  void updateCompliance(const ros::Time& timestamp);
 
   /*!
    * \brief Read and evaluate data in order to set robot status properties for industrial
@@ -216,6 +223,7 @@ protected:
   bool resendRobotProgram(std_srvs::TriggerRequest& req, std_srvs::TriggerResponse& res);
   bool zeroFTSensor(std_srvs::TriggerRequest& req, std_srvs::TriggerResponse& res);
   void commandCallback(const std_msgs::StringConstPtr& msg);
+  void complianceScheduleCallback(const ur_extra_msgs::ComplianceScheduleConstPtr& msg);
 
   std::unique_ptr<UrDriver> ur_driver_;
   std::unique_ptr<DashboardClientROS> dashboard_client_;
@@ -295,11 +303,20 @@ protected:
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::JointTemperatures>> joint_temperatures_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::ProtectiveStopRatios>> pstop_ratios_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::JointStateExtended>> joint_state_extended_pub_;
+  std::unique_ptr<realtime_tools::RealtimePublisher<ur_extra_msgs::ComplianceSummary>> compliance_summary_pub_;
 
   ros::ServiceServer set_speed_slider_srv_;
   ros::ServiceServer set_io_srv_;
   ros::ServiceServer resend_robot_program_srv_;
   ros::Subscriber command_sub_;
+  ros::Subscriber compliance_schedule_sub_;
+
+  // Guards `compliance_scheduler_` between the schedule callback and the control loop.
+  std::mutex compliance_mutex_;
+  ComplianceScheduler compliance_scheduler_;
+  // Control loop only.
+  ComplianceScriptStatus compliance_script_status_;
+  std::deque<ur_extra_msgs::ComplianceSummary> compliance_summaries_to_publish_;
 
   industrial_robot_status_interface::RobotStatus robot_status_resource_{};
   industrial_robot_status_interface::IndustrialRobotStatusInterface robot_status_interface_{};

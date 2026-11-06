@@ -167,11 +167,12 @@ std::unique_ptr<rtde_interface::DataPackage> ur_driver::UrDriver::getDataPackage
   return rtde_client_->getDataPackage(timeout);
 }
 
-bool UrDriver::writeJointCommand(const vector6d_t& values, const comm::ControlMode control_mode)
+bool UrDriver::writeJointCommand(const vector6d_t& values, const comm::ControlMode control_mode,
+                                 const comm::ComplianceParameters* compliance)
 {
   if (reverse_interface_active_)
   {
-    return reverse_interface_->write(&values, control_mode);
+    return reverse_interface_->write(&values, control_mode, compliance);
   }
   return false;
 }
