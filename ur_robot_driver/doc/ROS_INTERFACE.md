@@ -853,11 +853,19 @@ Should the tool's RS485 interface be forwarded to the ROS machine? This is only 
 
 Whenever the runtime state of the "External Control" program node in the UR-program changes, a message gets published here. So this is equivalent to the information whether the robot accepts commands from ROS side.
 
+##### compliance_summary (ur_extra_msgs/ComplianceSummary)
+
+One message per window of `compliance_schedule`, published once compliance for that window has ended: whether it ran (and if not, why), how it ended, and peak force and deflection. Read back from the compliant robot script through RTDE output registers (int 24: state, double 24–26: tool-frame deflection). Windows that end early or never run are also logged as warnings.
+
 #### Subscribed topics
 
 ##### script_command ([std_msgs/String](http://docs.ros.org/api/std_msgs/html/msg/String.html))
 
 Send arbitrary script commands to this topic. Note: On e-Series the robot has to be in remote-control mode.  Sending scripts to this will stop program execution unless wrapped in a secondary program:  sec myProgram(): set_digital_out(0, True) end
+
+##### compliance_schedule (ur_extra_msgs/ComplianceSchedule)
+
+Windows in which the arm is compliant, and the profile (tool-frame stiffness, damping, force cap, spring fade duration) of each. A schedule applies from its stamp, the way the trajectory controller applies a new goal from its start time: windows already held that end by then are kept, a window running across it is cut there, later ones are dropped, then the new windows are added. An empty schedule clears from its stamp. Stamp 0 means on receipt, for the windows too. While a position controller runs, the driver sends `MODE_SERVOJ_COMPLIANT` with the active window's profile values inside a window, and `MODE_SERVOJ` outside. Over the last `spring_fade_duration` before compliance ends (the end of a window not followed directly by another), it also sends a spring weight ramping from 1 to 0, so the script hands back to servoj with the spring unloaded. Requires the compliant robot script (PolyScope >= 5.23). An invalid schedule, or any window below PolyScope 5.23, is rejected with an error and clears the previous schedule.
 
 ### dashboard_client
 

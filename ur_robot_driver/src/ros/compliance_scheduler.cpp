@@ -1,0 +1,312 @@
+#include "ur_robot_driver/ros/compliance_scheduler.h"
+
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
+#include <sstream>
+#include <stdexcept>
+
+namespace ur_driver
+{
+using ur_extra_msgs::ComplianceSchedule;
+using ur_extra_msgs::ComplianceSummary;
+
+namespace
+{
+void requireRepresentable(double value, const char* name, size_t profile_idx)
+{
+  if (!comm::isComplianceValueRepresentable(value))
+  {
+    std::ostringstream message;
+    message << "profile " << profile_idx << " " << name << " " << value << " is not finite or out of range";
+    throw std::invalid_argument(message.str());
+  }
+}
+
+comm::ComplianceParameters parametersFromProfile(const ur_extra_msgs::ComplianceProfile& profile, size_t profile_idx)
+{
+  comm::ComplianceParameters parameters;
+  for (size_t i = 0; i < parameters.stiffness.size(); ++i)
+  {
+    requireRepresentable(profile.stiffness[i], "stiffness", profile_idx);
+    requireRepresentable(profile.damping[i], "damping", profile_idx);
+    parameters.stiffness[i] = profile.stiffness[i];
+    parameters.damping[i] = profile.damping[i];
+  }
+  requireRepresentable(profile.max_force, "max_force", profile_idx);
+  parameters.max_force = profile.max_force;
+  return parameters;
+}
+
+double springFadeDurationFromProfile(const ur_extra_msgs::ComplianceProfile& profile, size_t profile_idx)
+{
+  if (!std::isfinite(profile.spring_fade_duration) || profile.spring_fade_duration < 0.0)
+  {
+    std::ostringstream message;
+    message << "profile " << profile_idx << " spring_fade_duration " << profile.spring_fade_duration
+            << " is not finite and >= 0";
+    throw std::invalid_argument(message.str());
+  }
+  return profile.spring_fade_duration;
+}
+
+const char* describeEndReason(uint8_t end_reason)
+{
+  switch (end_reason)
+  {
+    case ComplianceSummary::END_WINDOW:
+      return "window ended";
+    case ComplianceSummary::END_CANCELLED:
+      return "cancelled";
+    case ComplianceSummary::END_EARLY:
+      return "robot script stopped being compliant before the window ended";
+    case ComplianceSummary::END_NOT_REPORTED:
+      return "robot script did not report the end";
+    default:
+      return "unknown end reason";
+  }
+}
+
+const char* describeNotCompliantReason(uint8_t not_compliant_reason)
+{
+  switch (not_compliant_reason)
+  {
+    case ComplianceSummary::NOT_COMPLIANT_CANCELLED:
+      return "cancelled before it began";
+    case ComplianceSummary::NOT_COMPLIANT_NOT_REPORTED:
+      return "robot script did not report compliant";
+    default:
+      return "unknown reason";
+  }
+}
+
+}  // namespace
+
+void ComplianceScheduler::setSchedule(const ComplianceSchedule& schedule, const ros::Time& time)
+{
+  // Validate everything before changing anything.
+  std::vector<comm::ComplianceParameters> profiles;
+  std::vector<double> spring_fade_durations;
+  for (size_t i = 0; i < schedule.profiles.size(); ++i)
+  {
+    profiles.push_back(parametersFromProfile(schedule.profiles[i], i));
+    spring_fade_durations.push_back(springFadeDurationFromProfile(schedule.profiles[i], i));
+  }
+  // Stamp 0 means on receipt, as for trajectory goals.
+  const ros::Time stamp = schedule.stamp.isZero() ? time : schedule.stamp;
+  std::vector<Window> windows;
+  for (size_t i = 0; i < schedule.windows.size(); ++i)
+  {
+    const ur_extra_msgs::ComplianceWindow& window = schedule.windows[i];
+    std::ostringstream where;
+    where << "window " << i << " [" << window.begin << ", " << window.end << "] s";
+    if (window.begin < ros::Duration(0.0) || window.end <= window.begin)
+    {
+      throw std::invalid_argument(where.str() + ": begin must be >= 0 and end > begin");
+    }
+    if (window.profile >= profiles.size())
+    {
+      throw std::invalid_argument(where.str() + ": profile " + std::to_string(window.profile) + " of " +
+                                  std::to_string(profiles.size()));
+    }
+    if (i > 0 && window.begin < schedule.windows[i - 1].end)
+    {
+      throw std::invalid_argument(where.str() + ": overlaps or precedes the previous window");
+    }
+    windows.push_back(Window{ stamp + window.begin, stamp + window.end, window.profile, profiles.at(window.profile),
+                              spring_fade_durations.at(window.profile) });
+  }
+
+  cutWindows(stamp, time);
+  for (const Window& window : windows)
+  {
+    windows_.push_back(window);
+    ComplianceSummary summary;
+    summary.window_begin = window.begin;
+    summary.window_end = window.end;
+    summary.profile = window.profile;
+    open_summaries_.push_back(summary);
+  }
+}
+
+void ComplianceScheduler::clearSchedule(const ros::Time& time)
+{
+  cutWindows(time, time);
+}
+
+boost::optional<comm::ComplianceParameters> ComplianceScheduler::calculateActiveParameters(const ros::Time& time) const
+{
+  for (size_t i = 0; i < windows_.size(); ++i)
+  {
+    if (!(windows_[i].begin <= time && time < windows_[i].end))
+    {
+      continue;
+    }
+    size_t last_idx = i;
+    while (last_idx + 1 < windows_.size() && windows_[last_idx + 1].begin == windows_[last_idx].end)
+    {
+      ++last_idx;
+    }
+    comm::ComplianceParameters parameters = windows_[i].parameters;
+    const double spring_fade_duration = windows_[last_idx].spring_fade_duration;
+    if (spring_fade_duration > 0.0)
+    {
+      parameters.spring_weight = std::min(1.0, (windows_[last_idx].end - time).toSec() / spring_fade_duration);
+    }
+    return parameters;
+  }
+  return boost::none;
+}
+
+void ComplianceScheduler::updateSummaries(const ros::Time& time, const ComplianceScriptStatus& status)
+{
+  // Once the next window begins, the script's status belongs to it.
+  while (open_summaries_.size() >= 2 && time >= open_summaries_[1].window_begin)
+  {
+    ComplianceSummary& superseded = open_summaries_.front();
+    if (superseded.was_compliant)
+    {
+      superseded.end_reason = ComplianceSummary::END_WINDOW;
+    }
+    else
+    {
+      superseded.not_compliant_reason = ComplianceSummary::NOT_COMPLIANT_NOT_REPORTED;
+    }
+    closeFrontSummary(time);
+  }
+  if (open_summaries_.empty() || time < open_summaries_.front().window_begin)
+  {
+    return;
+  }
+  ComplianceSummary& summary = open_summaries_.front();
+  summary.max_force = std::max(summary.max_force, status.force);
+
+  if (status.state == static_cast<int32_t>(ComplianceScriptState::COMPLIANT))
+  {
+    if (!summary.was_compliant)
+    {
+      summary.was_compliant = true;
+      summary.compliance_begin = time;
+    }
+    summary.compliance_end = time;
+    summary.max_deflection_z = std::max(summary.max_deflection_z, status.deflection[2]);
+    summary.max_deflection_xy =
+        std::max(summary.max_deflection_xy, std::hypot(status.deflection[0], status.deflection[1]));
+    summary.exit_deflection_z = status.deflection[2];
+    if (time >= summary.window_end + ros::Duration(k_max_end_report_delay))
+    {
+      summary.end_reason = ComplianceSummary::END_NOT_REPORTED;
+      closeFrontSummary(time);
+    }
+    return;
+  }
+  if (summary.was_compliant)
+  {
+    // The script ends compliance only when the window ends.
+    summary.end_reason =
+        time >= summary.window_end ? ComplianceSummary::END_WINDOW : ComplianceSummary::END_EARLY;
+    closeFrontSummary(time);
+    return;
+  }
+  if (time >= summary.window_end)
+  {
+    summary.not_compliant_reason = ComplianceSummary::NOT_COMPLIANT_NOT_REPORTED;
+    closeFrontSummary(time);
+  }
+}
+
+std::vector<ComplianceSummary> ComplianceScheduler::popClosedSummaries()
+{
+  std::vector<ComplianceSummary> closed;
+  closed.swap(closed_summaries_);
+  return closed;
+}
+
+void ComplianceScheduler::cutWindows(const ros::Time& cutoff, const ros::Time& time)
+{
+  std::vector<Window> kept_windows;
+  for (Window window : windows_)
+  {
+    if (window.begin >= cutoff)
+    {
+      continue;
+    }
+    window.end = std::min(window.end, cutoff);
+    kept_windows.push_back(window);
+  }
+  windows_.swap(kept_windows);
+
+  // A window cut to end later still ends normally then; one cut at or
+  // before `time` (or dropped) is cancelled now.
+  std::deque<ComplianceSummary> kept_summaries;
+  for (ComplianceSummary& summary : open_summaries_)
+  {
+    if (summary.window_end <= cutoff)
+    {
+      kept_summaries.push_back(summary);
+    }
+    else if (summary.window_begin < cutoff && cutoff > time)
+    {
+      summary.window_end = cutoff;
+      kept_summaries.push_back(summary);
+    }
+    else
+    {
+      closeCancelledSummary(summary, time);
+    }
+  }
+  open_summaries_.swap(kept_summaries);
+}
+
+void ComplianceScheduler::closeCancelledSummary(ComplianceSummary& summary, const ros::Time& time)
+{
+  if (summary.was_compliant)
+  {
+    summary.end_reason = ComplianceSummary::END_CANCELLED;
+  }
+  else
+  {
+    summary.not_compliant_reason = ComplianceSummary::NOT_COMPLIANT_CANCELLED;
+  }
+  summary.header.stamp = time;
+  closed_summaries_.push_back(summary);
+}
+
+void ComplianceScheduler::closeFrontSummary(const ros::Time& time)
+{
+  open_summaries_.front().header.stamp = time;
+  closed_summaries_.push_back(open_summaries_.front());
+  open_summaries_.pop_front();
+}
+
+ComplianceSummarySeverity classifyComplianceSummary(const ComplianceSummary& summary)
+{
+  if (!summary.was_compliant)
+  {
+    return summary.not_compliant_reason == ComplianceSummary::NOT_COMPLIANT_CANCELLED ?
+               ComplianceSummarySeverity::NONE :
+               ComplianceSummarySeverity::WARNING;
+  }
+  if (summary.end_reason == ComplianceSummary::END_WINDOW)
+  {
+    return ComplianceSummarySeverity::NONE;
+  }
+  return ComplianceSummarySeverity::WARNING;
+}
+
+std::string describeComplianceSummary(const ComplianceSummary& summary)
+{
+  std::ostringstream description;
+  description << std::fixed << std::setprecision(3) << "Compliance window [" << summary.window_begin.toSec() << ", "
+              << summary.window_end.toSec() << "] s (profile " << static_cast<int>(summary.profile) << ") ";
+  if (!summary.was_compliant)
+  {
+    description << "never ran: " << describeNotCompliantReason(summary.not_compliant_reason);
+    return description.str();
+  }
+  description << "compliant [" << summary.compliance_begin.toSec() << ", " << summary.compliance_end.toSec()
+              << "] s, ended: " << describeEndReason(summary.end_reason);
+  return description.str();
+}
+
+}  // namespace ur_driver

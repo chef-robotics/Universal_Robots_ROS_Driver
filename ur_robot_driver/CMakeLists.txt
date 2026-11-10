@@ -110,6 +110,7 @@ add_library(ur_robot_driver
     src/ur/dashboard_client.cpp
     src/ur/tool_communication.cpp
     src/rtde/rtde_writer.cpp
+    src/ros/compliance_scheduler.cpp
 )
 target_link_libraries(ur_robot_driver ${catkin_LIBRARIES})
 add_dependencies(ur_robot_driver ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
@@ -152,6 +153,12 @@ if(CATKIN_ENABLE_TESTING)
     test/test_rtde_client.cpp
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/test)
   target_link_libraries(test_rtde_client ${catkin_LIBRARIES} ur_robot_driver)
+
+  catkin_add_gtest(test_compliance_scheduler
+    test/test_compliance_scheduler.cpp)
+  target_link_libraries(test_compliance_scheduler ${catkin_LIBRARIES} ur_robot_driver)
+  # Current googletest needs C++14; appended after the package-wide -std=c++11.
+  target_compile_options(test_compliance_scheduler PRIVATE -std=c++14)
 endif()
 
 

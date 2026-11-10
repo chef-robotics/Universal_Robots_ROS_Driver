@@ -28,6 +28,7 @@
 #ifndef UR_RTDE_DRIVER_REVERSE_INTERFACE_H_INCLUDED
 #define UR_RTDE_DRIVER_REVERSE_INTERFACE_H_INCLUDED
 
+#include "ur_robot_driver/comm/compliance_parameters.h"
 #include "ur_robot_driver/comm/server.h"
 #include "ur_robot_driver/types.h"
 #include <cstring>
@@ -46,7 +47,8 @@ enum class ControlMode : int32_t
   MODE_UNINITIALIZED = -1,  ///< Startup default until another mode is sent to the script.
   MODE_IDLE = 0,            ///< Set when no controller is currently active controlling the robot.
   MODE_SERVOJ = 1,          ///< Set when servoj control is active.
-  MODE_SPEEDJ = 2           ///< Set when speedj control is active.
+  MODE_SPEEDJ = 2,          ///< Set when speedj control is active.
+  MODE_SERVOJ_COMPLIANT = 3 ///< Set when servoj control is active with compliance (robot script on PolyScope >= 5.23).
 };
 
 /*!
@@ -87,12 +89,34 @@ public:
    * \param positions A vector of joint targets for the robot
    * \param control_mode Control mode assigned to this command. See documentation of ::ControlMode
    * for details on possible values.
+   * \param compliance Values of the active compliance profile, sent with
+   * MODE_SERVOJ_COMPLIANT; zeros are sent when null. Each value must satisfy
+   * isComplianceValueRepresentable().
    *
    * \returns True, if the write was performed successfully, false otherwise.
    */
-  bool write(const vector6d_t* positions, const ControlMode control_mode = ControlMode::MODE_IDLE)
+  bool write(const vector6d_t* positions, const ControlMode control_mode = ControlMode::MODE_IDLE,
+             const ComplianceParameters* compliance = nullptr)
   {
-    uint8_t buffer[sizeof(int32_t) * 8];
+    uint8_t buffer[k_command_packet_size];
+    packCommand(buffer, positions, control_mode, compliance);
+    size_t written;
+    return server_.write(buffer, sizeof(buffer), written);
+  }
+
+  // Keepalive, 6 joint values, control mode, compliance values, each a
+  // big-endian int32. The robot script reads exactly this many integers.
+  static constexpr size_t k_command_packet_size = sizeof(int32_t) * (1 + 6 + 1 + k_num_compliance_values);
+
+  /*!
+   * \brief Serializes one command packet into `buffer`
+   * (k_command_packet_size bytes); see write() for the arguments.
+   * Null positions or compliance are sent as zeros.
+   */
+  static void packCommand(uint8_t* buffer, const vector6d_t* positions, const ControlMode control_mode,
+                          const ComplianceParameters* compliance)
+  {
+    std::memset(buffer, 0, k_command_packet_size);
     uint8_t* b_pos = buffer;
 
     // The first element is always the keepalive signal.
@@ -116,9 +140,19 @@ public:
     val = htobe32(toUnderlying(control_mode));
     b_pos += append(b_pos, val);
 
-    size_t written;
-
-    return server_.write(buffer, sizeof(buffer), written);
+    if (compliance != nullptr)
+    {
+      for (const double value : compliance->stiffness)
+      {
+        b_pos += appendComplianceValue(b_pos, value);
+      }
+      for (const double value : compliance->damping)
+      {
+        b_pos += appendComplianceValue(b_pos, value);
+      }
+      b_pos += appendComplianceValue(b_pos, compliance->max_force);
+      b_pos += appendComplianceValue(b_pos, compliance->spring_weight, k_compliance_spring_weight_multiplier);
+    }
   }
 
   /*!
@@ -147,8 +181,14 @@ private:
   URServer server_;
   static const int32_t MULT_JOINTSTATE = 1000000;
 
+  static size_t appendComplianceValue(uint8_t* buffer, double value, int32_t multiplier = k_compliance_multiplier)
+  {
+    int32_t val = htobe32(static_cast<int32_t>(std::round(value * multiplier)));
+    return append(buffer, val);
+  }
+
   template <typename T>
-  size_t append(uint8_t* buffer, T& val)
+  static size_t append(uint8_t* buffer, T& val)
   {
     size_t s = sizeof(T);
     std::memcpy(buffer, &val, s);
