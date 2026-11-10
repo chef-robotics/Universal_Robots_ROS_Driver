@@ -22,9 +22,6 @@ enum class ComplianceScriptState : int32_t
 {
   SERVOJ = 0,
   COMPLIANT = 1,
-  // Within the profile's hand-back limits, so back on servoj until
-  // compliance ends.
-  HANDED_BACK = 2,
 };
 
 /*!

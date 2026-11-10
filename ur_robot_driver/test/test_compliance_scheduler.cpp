@@ -153,45 +153,6 @@ TEST(ComplianceScheduler, rejectsUnrepresentableProfileValues)
   expectRejected(too_large);
 }
 
-TEST(ComplianceScheduler, handbackLimitsAreBothOffOrBothPositive)
-{
-  ComplianceSchedule only_deflection = makeSchedule();
-  only_deflection.profiles[0].handback_max_deflection = 0.005;
-  expectRejected(only_deflection);
-
-  ComplianceSchedule negative = makeSchedule();
-  negative.profiles[0].handback_max_deflection = -0.005;
-  negative.profiles[0].handback_max_speed = 0.05;
-  expectRejected(negative);
-
-  ComplianceSchedule both = makeSchedule();
-  both.profiles[0].handback_max_deflection = 0.005;
-  both.profiles[0].handback_max_speed = 0.05;
-  ComplianceScheduler scheduler;
-  scheduler.setSchedule(both, at(0.0));
-  const ur_driver::comm::ComplianceParameters* parameters = scheduler.findActiveParameters(at(1.2));
-  ASSERT_NE(parameters, nullptr);
-  EXPECT_EQ(parameters->handback_max_deflection, 0.005);
-  EXPECT_EQ(parameters->handback_max_speed, 0.05);
-}
-
-TEST(ComplianceScheduler, summarizesHandBack)
-{
-  ComplianceScheduler scheduler;
-  scheduler.setSchedule(makeSchedule(), at(0.0));
-  scheduler.updateSummaries(at(1.0), makeStatus(ComplianceScriptState::COMPLIANT, 0.020));
-  scheduler.updateSummaries(at(1.3), makeStatus(ComplianceScriptState::COMPLIANT, 0.004));
-  scheduler.updateSummaries(at(1.302), makeStatus(ComplianceScriptState::HANDED_BACK));
-
-  const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
-  ASSERT_EQ(summaries.size(), 1u);
-  EXPECT_TRUE(summaries[0].was_compliant);
-  EXPECT_EQ(summaries[0].compliance_end, at(1.3));
-  EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_HANDED_BACK);
-  EXPECT_DOUBLE_EQ(summaries[0].exit_deflection_z, 0.004);
-  EXPECT_EQ(ur_driver::classifyComplianceSummary(summaries[0]), ComplianceSummarySeverity::NONE);
-}
-
 TEST(ComplianceScheduler, summarizesWindowEnd)
 {
   ComplianceScheduler scheduler;
@@ -461,14 +422,12 @@ TEST(ReverseInterface, packsComplianceAfterMode)
 {
   using ur_driver::comm::ReverseInterface;
   const size_t packet_size = ReverseInterface::k_command_packet_size;
-  ASSERT_EQ(packet_size, 23 * sizeof(int32_t));
+  ASSERT_EQ(packet_size, 21 * sizeof(int32_t));
   ur_driver::comm::ComplianceParameters compliance;
   compliance.stiffness = { { 20000.0, 20000.0, 12000.0, 600.0, 600.0, 600.0 } };
   compliance.damping = { { 630.0, 630.0, 490.0, 11.0, 11.0, 11.0 } };
   // Rounded, not truncated: -2.6 -> -3.
   compliance.max_force = -0.026;
-  compliance.handback_max_deflection = 0.005;
-  compliance.handback_max_speed = 0.05;
   const ur_driver::vector6d_t positions = { { 0.1, -0.2, 0.3, -0.4, 0.5, -0.6 } };
   std::vector<uint8_t> buffer(packet_size);
   ReverseInterface::packCommand(buffer.data(), &positions, ur_driver::comm::ControlMode::MODE_SERVOJ_COMPLIANT,
@@ -481,12 +440,10 @@ TEST(ReverseInterface, packsComplianceAfterMode)
   EXPECT_EQ(extractPacketInt(buffer.data(), 14), 63000);
   EXPECT_EQ(extractPacketInt(buffer.data(), 19), 1100);
   EXPECT_EQ(extractPacketInt(buffer.data(), 20), -3);
-  EXPECT_EQ(extractPacketInt(buffer.data(), 21), 500);
-  EXPECT_EQ(extractPacketInt(buffer.data(), 22), 5000);
 
   ReverseInterface::packCommand(buffer.data(), &positions, ur_driver::comm::ControlMode::MODE_SERVOJ, nullptr);
   EXPECT_EQ(extractPacketInt(buffer.data(), 7), 1);
-  for (size_t i = 8; i < 23; ++i)
+  for (size_t i = 8; i < 21; ++i)
   {
     EXPECT_EQ(extractPacketInt(buffer.data(), i), 0) << i;
   }
@@ -498,9 +455,6 @@ TEST(ComplianceParameters, representableRange)
   EXPECT_TRUE(ur_driver::comm::isComplianceValueRepresentable(-21474836.0));
   EXPECT_FALSE(ur_driver::comm::isComplianceValueRepresentable(21474837.0));
   EXPECT_FALSE(ur_driver::comm::isComplianceValueRepresentable(std::numeric_limits<double>::infinity()));
-  const int32_t handback = ur_driver::comm::k_compliance_handback_multiplier;
-  EXPECT_TRUE(ur_driver::comm::isComplianceValueRepresentable(21474.0, handback));
-  EXPECT_FALSE(ur_driver::comm::isComplianceValueRepresentable(21475.0, handback));
 }
 
 int main(int argc, char** argv)
