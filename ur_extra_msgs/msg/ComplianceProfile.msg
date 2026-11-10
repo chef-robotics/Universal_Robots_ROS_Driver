@@ -8,3 +8,7 @@ float64[6] stiffness
 float64[6] damping
 # Saturation of the spring-damper's linear force.
 float64 max_force  # [N]
+# The spring force ramps linearly to zero over this long before compliance
+# ends (damping kept), so servoj takes over from an unloaded spring.
+# 0 ends compliance at full spring force.
+float64 spring_fade_duration  # [s]

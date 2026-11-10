@@ -65,13 +65,18 @@ ComplianceScriptStatus makeStatus(ComplianceScriptState state, double deflection
   return status;
 }
 
+bool isActive(const ComplianceScheduler& scheduler, const ros::Time& time)
+{
+  return scheduler.calculateActiveParameters(time).is_initialized();
+}
+
 void expectRejected(const ComplianceSchedule& schedule)
 {
   ComplianceScheduler scheduler;
   scheduler.setSchedule(makeSchedule(), at(0.0));
   EXPECT_THROW(scheduler.setSchedule(schedule, at(0.0)), std::invalid_argument);
   // The previous schedule is unchanged.
-  EXPECT_NE(scheduler.findActiveParameters(at(1.2)), nullptr);
+  EXPECT_TRUE(isActive(scheduler, at(1.2)));
   EXPECT_TRUE(scheduler.popClosedSummaries().empty());
 }
 
@@ -87,16 +92,18 @@ int32_t extractPacketInt(const uint8_t* buffer, size_t idx)
 TEST(ComplianceScheduler, activeOnlyInsideWindow)
 {
   ComplianceScheduler scheduler;
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.2)), nullptr);
+  EXPECT_FALSE(isActive(scheduler, at(1.2)));
   scheduler.setSchedule(makeSchedule(), at(0.0));
-  EXPECT_EQ(scheduler.findActiveParameters(at(0.999)), nullptr);
-  const ur_driver::comm::ComplianceParameters* parameters = scheduler.findActiveParameters(at(1.0));
-  ASSERT_NE(parameters, nullptr);
+  EXPECT_FALSE(isActive(scheduler, at(0.999)));
+  const boost::optional<ur_driver::comm::ComplianceParameters> parameters =
+      scheduler.calculateActiveParameters(at(1.0));
+  ASSERT_TRUE(parameters.is_initialized());
   EXPECT_EQ(parameters->stiffness[2], 12000.0);
   EXPECT_EQ(parameters->damping[3], 11.0);
   EXPECT_EQ(parameters->max_force, 250.0);
-  EXPECT_NE(scheduler.findActiveParameters(at(1.499)), nullptr);
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.5)), nullptr);
+  EXPECT_EQ(parameters->spring_weight, 1.0);
+  EXPECT_TRUE(isActive(scheduler, at(1.499)));
+  EXPECT_FALSE(isActive(scheduler, at(1.5)));
 }
 
 TEST(ComplianceScheduler, eachWindowUsesItsProfile)
@@ -106,8 +113,8 @@ TEST(ComplianceScheduler, eachWindowUsesItsProfile)
   schedule.windows.push_back(makeWindow(2.0, 2.5, 1));
   ComplianceScheduler scheduler;
   scheduler.setSchedule(schedule, at(0.0));
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.2))->stiffness[2], 12000.0);
-  EXPECT_EQ(scheduler.findActiveParameters(at(2.2))->stiffness[2], 3000.0);
+  EXPECT_EQ(scheduler.calculateActiveParameters(at(1.2))->stiffness[2], 12000.0);
+  EXPECT_EQ(scheduler.calculateActiveParameters(at(2.2))->stiffness[2], 3000.0);
 }
 
 TEST(ComplianceScheduler, emptyScheduleClears)
@@ -115,7 +122,7 @@ TEST(ComplianceScheduler, emptyScheduleClears)
   ComplianceScheduler scheduler;
   scheduler.setSchedule(makeSchedule(), at(0.0));
   scheduler.setSchedule(ComplianceSchedule(), at(0.0));
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.2)), nullptr);
+  EXPECT_FALSE(isActive(scheduler, at(1.2)));
 }
 
 TEST(ComplianceScheduler, rejectsInvalidWindows)
@@ -136,10 +143,13 @@ TEST(ComplianceScheduler, rejectsInvalidWindows)
   out_of_order.windows.insert(out_of_order.windows.begin(), makeWindow(2.0, 2.5));
   expectRejected(out_of_order);
 
+  ComplianceSchedule negative_fade = makeSchedule();
+  negative_fade.profiles[0].spring_fade_duration = -0.1;
+  expectRejected(negative_fade);
+
   ComplianceSchedule missing_profile = makeSchedule();
   missing_profile.windows[0].profile = 1;
   expectRejected(missing_profile);
-
 }
 
 TEST(ComplianceScheduler, rejectsUnrepresentableProfileValues)
@@ -203,7 +213,7 @@ TEST(ComplianceScheduler, warnsWhenComplianceEndsEarly)
   EXPECT_EQ(ur_driver::classifyComplianceSummary(summaries[0]), ComplianceSummarySeverity::WARNING);
   EXPECT_NE(ur_driver::describeComplianceSummary(summaries[0]).find("before the window ended"), std::string::npos);
   // The window itself still runs to its end.
-  EXPECT_NE(scheduler.findActiveParameters(at(1.4)), nullptr);
+  EXPECT_TRUE(isActive(scheduler, at(1.4)));
 }
 
 TEST(ComplianceScheduler, warnsWhenScriptNeverReportsCompliant)
@@ -249,8 +259,8 @@ TEST(ComplianceScheduler, cancelsPendingWindowQuietly)
   EXPECT_FALSE(summaries[0].was_compliant);
   EXPECT_EQ(summaries[0].not_compliant_reason, ComplianceSummary::NOT_COMPLIANT_CANCELLED);
   EXPECT_EQ(ur_driver::classifyComplianceSummary(summaries[0]), ComplianceSummarySeverity::NONE);
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.2)), nullptr);
-  EXPECT_NE(scheduler.findActiveParameters(at(2.2)), nullptr);
+  EXPECT_FALSE(isActive(scheduler, at(1.2)));
+  EXPECT_TRUE(isActive(scheduler, at(2.2)));
 }
 
 TEST(ComplianceScheduler, warnsOnCancelMidWindow)
@@ -259,7 +269,7 @@ TEST(ComplianceScheduler, warnsOnCancelMidWindow)
   scheduler.setSchedule(makeSchedule(), at(0.0));
   scheduler.updateSummaries(at(1.1), makeStatus(ComplianceScriptState::COMPLIANT));
   scheduler.clearSchedule(at(1.2));
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.2)), nullptr);
+  EXPECT_FALSE(isActive(scheduler, at(1.2)));
   const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
   ASSERT_EQ(summaries.size(), 1u);
   EXPECT_TRUE(summaries[0].was_compliant);
@@ -297,9 +307,9 @@ TEST(ComplianceScheduler, replacementKeepsOldWindowUntilNewStamp)
   replacement.windows.push_back(makeWindow(0.0, 0.3));
   scheduler.setSchedule(replacement, at(1.1));
   EXPECT_TRUE(scheduler.popClosedSummaries().empty());
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.15))->stiffness[2], 12000.0);
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.2))->stiffness[2], 3000.0);
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.5)), nullptr);
+  EXPECT_EQ(scheduler.calculateActiveParameters(at(1.15))->stiffness[2], 12000.0);
+  EXPECT_EQ(scheduler.calculateActiveParameters(at(1.2))->stiffness[2], 3000.0);
+  EXPECT_FALSE(isActive(scheduler, at(1.5)));
 
   const ComplianceScriptStatus compliant = makeStatus(ComplianceScriptState::COMPLIANT);
   scheduler.updateSummaries(at(1.15), compliant);
@@ -324,8 +334,8 @@ TEST(ComplianceScheduler, emptyScheduleClearsFromItsStamp)
   ComplianceSchedule clear_later;
   clear_later.stamp = at(1.3);
   scheduler.setSchedule(clear_later, at(1.1));
-  EXPECT_NE(scheduler.findActiveParameters(at(1.29)), nullptr);
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.3)), nullptr);
+  EXPECT_TRUE(isActive(scheduler, at(1.29)));
+  EXPECT_FALSE(isActive(scheduler, at(1.3)));
   EXPECT_TRUE(scheduler.popClosedSummaries().empty());
   scheduler.updateSummaries(at(1.32), makeStatus(ComplianceScriptState::SERVOJ));
   const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
@@ -340,7 +350,7 @@ TEST(ComplianceScheduler, emptyScheduleStampedZeroClearsOnReceipt)
   scheduler.setSchedule(makeSchedule(), at(0.0));
   scheduler.updateSummaries(at(1.05), makeStatus(ComplianceScriptState::COMPLIANT));
   scheduler.setSchedule(ComplianceSchedule(), at(1.2));
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.2)), nullptr);
+  EXPECT_FALSE(isActive(scheduler, at(1.2)));
   const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
   ASSERT_EQ(summaries.size(), 1u);
   EXPECT_EQ(summaries[0].header.stamp, at(1.2));
@@ -354,9 +364,9 @@ TEST(ComplianceScheduler, stampZeroWindowsRunFromReceipt)
   unstamped.stamp = ros::Time();
   ComplianceScheduler scheduler;
   scheduler.setSchedule(unstamped, at(0.5));
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.49)), nullptr);
-  EXPECT_NE(scheduler.findActiveParameters(at(1.5)), nullptr);
-  EXPECT_EQ(scheduler.findActiveParameters(at(2.0)), nullptr);
+  EXPECT_FALSE(isActive(scheduler, at(1.49)));
+  EXPECT_TRUE(isActive(scheduler, at(1.5)));
+  EXPECT_FALSE(isActive(scheduler, at(2.0)));
 }
 
 TEST(ComplianceScheduler, pastStampCancelsRunningWindowAndStartsNewOne)
@@ -373,7 +383,7 @@ TEST(ComplianceScheduler, pastStampCancelsRunningWindowAndStartsNewOne)
   const std::vector<ComplianceSummary> summaries = scheduler.popClosedSummaries();
   ASSERT_EQ(summaries.size(), 1u);
   EXPECT_EQ(summaries[0].end_reason, ComplianceSummary::END_CANCELLED);
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.1))->stiffness[2], 3000.0);
+  EXPECT_EQ(scheduler.calculateActiveParameters(at(1.1))->stiffness[2], 3000.0);
 }
 
 TEST(ComplianceScheduler, backToBackWindowsSwitchProfileWithoutGap)
@@ -384,8 +394,8 @@ TEST(ComplianceScheduler, backToBackWindowsSwitchProfileWithoutGap)
   schedule.windows.push_back(makeWindow(1.5, 2.0, 1));
   ComplianceScheduler scheduler;
   scheduler.setSchedule(schedule, at(0.0));
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.499))->stiffness[2], 12000.0);
-  EXPECT_EQ(scheduler.findActiveParameters(at(1.5))->stiffness[2], 3000.0);
+  EXPECT_EQ(scheduler.calculateActiveParameters(at(1.499))->stiffness[2], 12000.0);
+  EXPECT_EQ(scheduler.calculateActiveParameters(at(1.5))->stiffness[2], 3000.0);
 
   const ComplianceScriptStatus compliant = makeStatus(ComplianceScriptState::COMPLIANT);
   scheduler.updateSummaries(at(1.4), compliant);
@@ -400,6 +410,37 @@ TEST(ComplianceScheduler, backToBackWindowsSwitchProfileWithoutGap)
   EXPECT_EQ(second[0].profile, 1);
   EXPECT_EQ(second[0].compliance_begin, at(1.5));
   EXPECT_EQ(second[0].end_reason, ComplianceSummary::END_WINDOW);
+}
+
+TEST(ComplianceScheduler, springFadesOverLastFadeDuration)
+{
+  ComplianceSchedule schedule = makeSchedule();
+  schedule.profiles[0].spring_fade_duration = 0.1;
+  ComplianceScheduler scheduler;
+  scheduler.setSchedule(schedule, at(0.0));
+  EXPECT_DOUBLE_EQ(scheduler.calculateActiveParameters(at(1.0))->spring_weight, 1.0);
+  EXPECT_DOUBLE_EQ(scheduler.calculateActiveParameters(at(1.4))->spring_weight, 1.0);
+  EXPECT_NEAR(scheduler.calculateActiveParameters(at(1.45))->spring_weight, 0.5, 1e-9);
+  EXPECT_NEAR(scheduler.calculateActiveParameters(at(1.49))->spring_weight, 0.1, 1e-9);
+}
+
+TEST(ComplianceScheduler, springFadesOnlyBeforeComplianceEnds)
+{
+  // Back-to-back windows: no fade at the seam, only before the last end.
+  ComplianceSchedule schedule = makeSchedule();
+  schedule.profiles[0].spring_fade_duration = 0.1;
+  schedule.profiles.push_back(makeProfile(3000.0));
+  schedule.profiles[1].spring_fade_duration = 0.2;
+  schedule.windows.push_back(makeWindow(1.5, 1.6, 1));
+  ComplianceScheduler scheduler;
+  scheduler.setSchedule(schedule, at(0.0));
+  EXPECT_DOUBLE_EQ(scheduler.calculateActiveParameters(at(1.3))->spring_weight, 1.0);
+  // The last window's fade reaches back into the first one.
+  const boost::optional<ur_driver::comm::ComplianceParameters> first =
+      scheduler.calculateActiveParameters(at(1.5) - ros::Duration(0.05));
+  EXPECT_EQ(first->stiffness[2], 12000.0);
+  EXPECT_NEAR(first->spring_weight, 0.75, 1e-9);
+  EXPECT_NEAR(scheduler.calculateActiveParameters(at(1.55))->spring_weight, 0.25, 1e-9);
 }
 
 TEST(ComplianceScheduler, peakForceCountsBeforeCompliance)
@@ -422,12 +463,13 @@ TEST(ReverseInterface, packsComplianceAfterMode)
 {
   using ur_driver::comm::ReverseInterface;
   const size_t packet_size = ReverseInterface::k_command_packet_size;
-  ASSERT_EQ(packet_size, 21 * sizeof(int32_t));
+  ASSERT_EQ(packet_size, 22 * sizeof(int32_t));
   ur_driver::comm::ComplianceParameters compliance;
   compliance.stiffness = { { 20000.0, 20000.0, 12000.0, 600.0, 600.0, 600.0 } };
   compliance.damping = { { 630.0, 630.0, 490.0, 11.0, 11.0, 11.0 } };
   // Rounded, not truncated: -2.6 -> -3.
   compliance.max_force = -0.026;
+  compliance.spring_weight = 0.123456;
   const ur_driver::vector6d_t positions = { { 0.1, -0.2, 0.3, -0.4, 0.5, -0.6 } };
   std::vector<uint8_t> buffer(packet_size);
   ReverseInterface::packCommand(buffer.data(), &positions, ur_driver::comm::ControlMode::MODE_SERVOJ_COMPLIANT,
@@ -440,10 +482,11 @@ TEST(ReverseInterface, packsComplianceAfterMode)
   EXPECT_EQ(extractPacketInt(buffer.data(), 14), 63000);
   EXPECT_EQ(extractPacketInt(buffer.data(), 19), 1100);
   EXPECT_EQ(extractPacketInt(buffer.data(), 20), -3);
+  EXPECT_EQ(extractPacketInt(buffer.data(), 21), 12346);
 
   ReverseInterface::packCommand(buffer.data(), &positions, ur_driver::comm::ControlMode::MODE_SERVOJ, nullptr);
   EXPECT_EQ(extractPacketInt(buffer.data(), 7), 1);
-  for (size_t i = 8; i < 21; ++i)
+  for (size_t i = 8; i < 22; ++i)
   {
     EXPECT_EQ(extractPacketInt(buffer.data(), i), 0) << i;
   }

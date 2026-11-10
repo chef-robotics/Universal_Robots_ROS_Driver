@@ -610,10 +610,11 @@ void HardwareInterface::write(const ros::Time& time, const ros::Duration& period
     if (position_controller_running_)
     {
       std::lock_guard<std::mutex> lock(compliance_mutex_);
-      const comm::ComplianceParameters* compliance = compliance_scheduler_.findActiveParameters(time);
+      const boost::optional<comm::ComplianceParameters> compliance =
+          compliance_scheduler_.calculateActiveParameters(time);
       const comm::ControlMode mode =
-          compliance != nullptr ? comm::ControlMode::MODE_SERVOJ_COMPLIANT : comm::ControlMode::MODE_SERVOJ;
-      ur_driver_->writeJointCommand(joint_position_command_, mode, compliance);
+          compliance ? comm::ControlMode::MODE_SERVOJ_COMPLIANT : comm::ControlMode::MODE_SERVOJ;
+      ur_driver_->writeJointCommand(joint_position_command_, mode, compliance ? &*compliance : nullptr);
     }
     else if (velocity_controller_running_)
     {

@@ -20,13 +20,18 @@ struct ComplianceParameters
   vector6d_t stiffness;  // Tool frame [N/m, N·m/rad].
   vector6d_t damping;    // Tool frame [N·s/m, N·m·s/rad].
   double max_force;      // [N]
+  // Scale on the spring force this cycle, in [0, 1]; see
+  // ComplianceProfile::spring_fade_duration.
+  double spring_weight = 1.0;
 };
 
 // The reverse interface sends each value as an int32 of value times this:
 // 0.01 resolution over +-21 million, beyond any physical profile.
 constexpr int32_t k_compliance_multiplier = 100;
-// Stiffness, damping, max force.
-constexpr int k_num_compliance_values = 6 + 6 + 1;
+// The spring weight gets 1e-5 resolution instead.
+constexpr int32_t k_compliance_spring_weight_multiplier = 100000;
+// Stiffness, damping, max force, spring weight.
+constexpr int k_num_compliance_values = 6 + 6 + 1 + 1;
 
 /*!
  * \brief Whether `value` survives the reverse interface's fixed-point encoding.

@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include <boost/optional.hpp>
 #include <ros/time.h>
 #include <ur_extra_msgs/ComplianceSchedule.h>
 #include <ur_extra_msgs/ComplianceSummary.h>
@@ -73,10 +74,13 @@ public:
   void clearSchedule(const ros::Time& time);
 
   /*!
-   * \brief Profile values of the window active at `time`, or null outside
-   * every window. Valid until the schedule next changes.
+   * \brief Profile values of the window active at `time`, with the spring
+   * weight of its fade, or none outside every window.
+   *
+   * Compliance ends at the end of the last window that follows without a
+   * gap; the spring fades over that window's `spring_fade_duration` before it.
    */
-  const comm::ComplianceParameters* findActiveParameters(const ros::Time& time) const;
+  boost::optional<comm::ComplianceParameters> calculateActiveParameters(const ros::Time& time) const;
 
   /*!
    * \brief Account the script's status at `time` into the open summaries.
@@ -95,6 +99,7 @@ private:
     ros::Time end;
     uint8_t profile;  // Index into the schedule it came from, for its summary.
     comm::ComplianceParameters parameters;
+    double spring_fade_duration;  // [s]
   };
 
   // Keep what ends by `cutoff`, cut what runs across it, drop the rest.

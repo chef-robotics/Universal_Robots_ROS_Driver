@@ -38,6 +38,18 @@ comm::ComplianceParameters parametersFromProfile(const ur_extra_msgs::Compliance
   return parameters;
 }
 
+double springFadeDurationFromProfile(const ur_extra_msgs::ComplianceProfile& profile, size_t profile_idx)
+{
+  if (!std::isfinite(profile.spring_fade_duration) || profile.spring_fade_duration < 0.0)
+  {
+    std::ostringstream message;
+    message << "profile " << profile_idx << " spring_fade_duration " << profile.spring_fade_duration
+            << " is not finite and >= 0";
+    throw std::invalid_argument(message.str());
+  }
+  return profile.spring_fade_duration;
+}
+
 const char* describeEndReason(uint8_t end_reason)
 {
   switch (end_reason)
@@ -74,9 +86,11 @@ void ComplianceScheduler::setSchedule(const ComplianceSchedule& schedule, const 
 {
   // Validate everything before changing anything.
   std::vector<comm::ComplianceParameters> profiles;
+  std::vector<double> spring_fade_durations;
   for (size_t i = 0; i < schedule.profiles.size(); ++i)
   {
     profiles.push_back(parametersFromProfile(schedule.profiles[i], i));
+    spring_fade_durations.push_back(springFadeDurationFromProfile(schedule.profiles[i], i));
   }
   // Stamp 0 means on receipt, as for trajectory goals.
   const ros::Time stamp = schedule.stamp.isZero() ? time : schedule.stamp;
@@ -99,8 +113,8 @@ void ComplianceScheduler::setSchedule(const ComplianceSchedule& schedule, const 
     {
       throw std::invalid_argument(where.str() + ": overlaps or precedes the previous window");
     }
-    windows.push_back(
-        Window{ stamp + window.begin, stamp + window.end, window.profile, profiles.at(window.profile) });
+    windows.push_back(Window{ stamp + window.begin, stamp + window.end, window.profile, profiles.at(window.profile),
+                              spring_fade_durations.at(window.profile) });
   }
 
   cutWindows(stamp, time);
@@ -120,16 +134,28 @@ void ComplianceScheduler::clearSchedule(const ros::Time& time)
   cutWindows(time, time);
 }
 
-const comm::ComplianceParameters* ComplianceScheduler::findActiveParameters(const ros::Time& time) const
+boost::optional<comm::ComplianceParameters> ComplianceScheduler::calculateActiveParameters(const ros::Time& time) const
 {
-  for (const Window& window : windows_)
+  for (size_t i = 0; i < windows_.size(); ++i)
   {
-    if (window.begin <= time && time < window.end)
+    if (!(windows_[i].begin <= time && time < windows_[i].end))
     {
-      return &window.parameters;
+      continue;
     }
+    size_t last_idx = i;
+    while (last_idx + 1 < windows_.size() && windows_[last_idx + 1].begin == windows_[last_idx].end)
+    {
+      ++last_idx;
+    }
+    comm::ComplianceParameters parameters = windows_[i].parameters;
+    const double spring_fade_duration = windows_[last_idx].spring_fade_duration;
+    if (spring_fade_duration > 0.0)
+    {
+      parameters.spring_weight = std::min(1.0, (windows_[last_idx].end - time).toSec() / spring_fade_duration);
+    }
+    return parameters;
   }
-  return nullptr;
+  return boost::none;
 }
 
 void ComplianceScheduler::updateSummaries(const ros::Time& time, const ComplianceScriptStatus& status)
