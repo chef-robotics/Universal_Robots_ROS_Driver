@@ -53,6 +53,7 @@
 #include <ur_extra_msgs/ComplianceSchedule.h>
 #include <ur_extra_msgs/ComplianceSummary.h>
 
+#include <ur_controllers/compliance_state_interface.h>
 #include <ur_controllers/speed_scaling_interface.h>
 #include <ur_controllers/scaled_joint_command_interface.h>
 
@@ -244,6 +245,7 @@ protected:
   ur_controllers::ScaledPositionJointInterface spj_interface_;
   hardware_interface::PositionJointInterface pj_interface_;
   ur_controllers::SpeedScalingInterface speedsc_interface_;
+  ur_controllers::ComplianceStateInterface compliance_state_interface_;
   hardware_interface::VelocityJointInterface vj_interface_;
   ur_controllers::ScaledVelocityJointInterface svj_interface_;
   hardware_interface::ForceTorqueSensorInterface fts_interface_;
@@ -316,6 +318,8 @@ protected:
   ComplianceScheduler compliance_scheduler_;
   // Control loop only.
   ComplianceScriptStatus compliance_script_status_;
+  // Whether the script reports the compliant state; read by controllers.
+  bool is_compliant_{ false };
   std::deque<ur_extra_msgs::ComplianceSummary> compliance_summaries_to_publish_;
 
   industrial_robot_status_interface::RobotStatus robot_status_resource_{};

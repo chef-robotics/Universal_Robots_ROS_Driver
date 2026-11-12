@@ -324,6 +324,7 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
 
   speedsc_interface_.registerHandle(
       ur_controllers::SpeedScalingHandle("speed_scaling_factor", &speed_scaling_combined_));
+  compliance_state_interface_.registerHandle(ur_controllers::ComplianceStateHandle("compliance_state", &is_compliant_));
 
   fts_interface_.registerHandle(hardware_interface::ForceTorqueSensorHandle(
       wrench_frame_id, tf_prefix_ + "tool0_controller", fts_measurements_.begin(), fts_measurements_.begin() + 3));
@@ -338,6 +339,7 @@ bool HardwareInterface::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw
   registerInterface(&vj_interface_);
   registerInterface(&svj_interface_);
   registerInterface(&speedsc_interface_);
+  registerInterface(&compliance_state_interface_);
   registerInterface(&fts_interface_);
   registerInterface(&robot_status_interface_);
 
@@ -528,6 +530,7 @@ void HardwareInterface::read(const ros::Time& time, const ros::Duration& period)
     readData(data_pkg, "output_double_register_24", compliance_script_status_.deflection[0], false, 0.0);
     readData(data_pkg, "output_double_register_25", compliance_script_status_.deflection[1], false, 0.0);
     readData(data_pkg, "output_double_register_26", compliance_script_status_.deflection[2], false, 0.0);
+    is_compliant_ = compliance_script_status_.state == static_cast<int32_t>(ComplianceScriptState::COMPLIANT);
     compliance_script_status_.force =
         std::sqrt(fts_measurements_[0] * fts_measurements_[0] + fts_measurements_[1] * fts_measurements_[1] +
                   fts_measurements_[2] * fts_measurements_[2]);

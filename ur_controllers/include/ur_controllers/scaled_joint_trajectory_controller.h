@@ -27,6 +27,11 @@
 #ifndef UR_CONTROLLERS_SCALED_TRAJECTORY_CONTROLLER_H_INCLUDED
 #define UR_CONTROLLERS_SCALED_TRAJECTORY_CONTROLLER_H_INCLUDED
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
+#include "ur_controllers/compliance_state_interface.h"
 #include "ur_controllers/hardware_interface_adapter.h"
 #include <joint_trajectory_controller/joint_trajectory_controller.h>
 
@@ -40,9 +45,49 @@ public:
   ScaledJointTrajectoryController() = default;
   virtual ~ScaledJointTrajectoryController() = default;
 
+  /*!
+   * \brief Initialize as the base controller, then read the optional compliance path tolerances.
+   *
+   * While the robot script is compliant, and for `compliance_constraints/grace` seconds after, each joint's
+   * path tolerance widens to `compliance_constraints/<joint>/trajectory`. Without a `compliance_state`
+   * handle or `compliance_constraints`, path tolerances are as configured.
+   */
+  bool initRequest(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& root_nh, ros::NodeHandle& controller_nh,
+                   controller_interface::ControllerBase::ClaimedResources& claimed_resources) override
+  {
+    if (!Base::initRequest(robot_hw, root_nh, controller_nh, claimed_resources))
+    {
+      return false;
+    }
+    ComplianceStateInterface* compliance_state_interface = robot_hw->get<ComplianceStateInterface>();
+    if (compliance_state_interface == nullptr || !controller_nh.hasParam("compliance_constraints"))
+    {
+      return true;
+    }
+    try
+    {
+      compliance_state_ = compliance_state_interface->getHandle("compliance_state");
+    }
+    catch (const hardware_interface::HardwareInterfaceException& e)
+    {
+      ROS_WARN_STREAM_NAMED(this->name_, "No compliance state, path tolerances as configured: " << e.what());
+      return true;
+    }
+    ros::NodeHandle compliance_nh(controller_nh, "compliance_constraints");
+    compliance_nh.param("grace", dt_compliance_grace_, 0.0);
+    compliance_path_tolerances_.assign(this->joint_names_.size(), 0.0);
+    for (size_t i = 0; i < this->joint_names_.size(); ++i)
+    {
+      compliance_nh.param(this->joint_names_[i] + "/trajectory", compliance_path_tolerances_[i], 0.0);
+    }
+    has_compliance_state_ = true;
+    return true;
+  }
+
   void update(const ros::Time& time, const ros::Duration& period)
   {
     this->scaling_factor_ = this->joints_[0].getScalingFactor();
+    const bool is_in_compliance = updateIsInCompliance(time);
     // Get currently followed trajectory
     typename Base::TrajectoryPtr curr_traj_ptr;
     this->curr_trajectory_box_.get(curr_traj_ptr);
@@ -106,12 +151,19 @@ public:
           // Currently executing a segment: check path tolerances
           const joint_trajectory_controller::SegmentTolerancesPerJoint<typename Base::Scalar>& joint_tolerances =
               segment_it->getTolerances();
-          if (!checkStateTolerancePerJoint(this->state_joint_error_, joint_tolerances.state_tolerance))
+          joint_trajectory_controller::StateTolerances<typename Base::Scalar> path_tolerance =
+              joint_tolerances.state_tolerance;
+          // A zero tolerance is unchecked; compliance only widens a checked one.
+          if (is_in_compliance && path_tolerance.position > 0.0)
+          {
+            path_tolerance.position = std::max(path_tolerance.position, compliance_path_tolerances_[i]);
+          }
+          if (!checkStateTolerancePerJoint(this->state_joint_error_, path_tolerance))
           {
             if (this->verbose_)
             {
               ROS_ERROR_STREAM_NAMED(this->name_, "Path tolerances failed for joint: " << this->joint_names_[i]);
-              checkStateTolerancePerJoint(this->state_joint_error_, joint_tolerances.state_tolerance, true);
+              checkStateTolerancePerJoint(this->state_joint_error_, path_tolerance, true);
             }
             rt_segment_goal->preallocated_result_->error_code =
                 control_msgs::FollowJointTrajectoryResult::PATH_TOLERANCE_VIOLATED;
@@ -200,7 +252,30 @@ protected:
   double scaling_factor_;
 
 private:
-  /* data */
+  /*!
+   * \brief Whether the script is compliant now or was within the grace (its exit blend back onto the plan).
+   *
+   * Records `time` as the last compliant time when it is compliant.
+   */
+  bool updateIsInCompliance(const ros::Time& time)
+  {
+    if (!has_compliance_state_)
+    {
+      return false;
+    }
+    if (compliance_state_.isCompliant())
+    {
+      t_last_compliant_ = time;
+      return true;
+    }
+    return !t_last_compliant_.isZero() && (time - t_last_compliant_).toSec() < dt_compliance_grace_;
+  }
+
+  ComplianceStateHandle compliance_state_;
+  bool has_compliance_state_ = false;
+  double dt_compliance_grace_ = 0.0;  // [s]
+  std::vector<double> compliance_path_tolerances_;  // [rad], per joint in `joint_names_` order
+  ros::Time t_last_compliant_;
 };
 }  // namespace ur_controllers
 
